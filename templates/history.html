@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Historial · taskApp{% endblock %}
+{% block navigation %}{% include "nav.html" %}{% endblock %}
+{% block content %}
+<div class="heading heading-row">
+  <div>
+    <h1>Historial</h1>
+    <p>Consulta y edita los trabajos registrados.</p>
+  </div>
+  <div class="header-actions"><a class="secondary" href="/exportar" data-open-export>Exportar</a><a class="primary" href="/tareas/nueva">+ Nueva tarea</a></div>
+</div>
+<dialog id="export-dialog" aria-labelledby="export-title">
+  <div class="dialog-header"><h2 id="export-title">Exportar tareas</h2><form method="dialog"><button type="submit" class="quiet" aria-label="Cerrar">×</button></form></div>
+  {% include "export_form.html" %}
+</dialog>
+{% if edited %}<p class="notice success" role="status">✓ Cambios guardados.</p>{% endif %}
+{% if tasks.is_empty() %}
+  <div class="panel empty">
+    <h2>{% if number == 1 %}Aún no hay tareas{% else %}Esta página está vacía{% endif %}</h2>
+    {% if number == 1 %}<p>Tu primer trabajo aparecerá aquí después de guardarlo.</p>{% endif %}
+  </div>
+{% else %}
+  <ul class="panel records">
+    {% for task in tasks %}
+    {% include "record.html" %}
+    {% endfor %}
+  </ul>
+{% endif %}
+{% if number > 1 || has_next %}
+<nav class="pager" aria-label="Páginas del historial">
+  {% if number > 1 %}<a href="/historial?page={{ prev }}">← Anterior</a>{% endif %}
+  <span>Página {{ number }}</span>
+  {% if has_next %}<a href="/historial?page={{ next }}">Siguiente →</a>{% endif %}
+</nav>
+{% endif %}
+{% endblock %}

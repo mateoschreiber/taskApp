@@ -1,0 +1,11 @@
+<li>
+  <div class="record-main">
+    <p class="record-meta"><time datetime="{{ task.activity_date }}">{{ task.activity_date }}</time> · {{ task.store }}</p>
+    <h3><a href="/tareas/{{ task.id }}">{{ task.work }}</a></h3>
+    <p class="record-meta">{{ task.intervention }}</p>
+  </div>
+  <div class="record-actions">
+    <span class="status">{{ task.status }}</span>
+    <a href="/tareas/{{ task.id }}" class="quiet" aria-label="Editar {{ task.work }}">Editar <span aria-hidden="true">↗</span></a>
+  </div>
+</li>

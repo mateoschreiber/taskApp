@@ -1,0 +1,9 @@
+<nav class="nav" aria-label="Principal">
+  <a href="/">Hoy</a>
+  <a href="/historial">Historial</a>
+  <a href="/sin-conexion" data-pending hidden>Pendientes <span data-pending-count></span></a>
+</nav>
+<form action="/salir" method="post" class="signout">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <button type="submit" class="quiet">Cerrar sesión</button>
+</form>

@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}Exportar · taskApp{% endblock %}
+{% block navigation %}{% include "nav.html" %}{% endblock %}
+{% block content %}
+<div class="heading"><a class="back" href="/historial">← Historial</a><h1>Exportar tareas</h1></div>
+<div class="panel export-panel">{% include "export_form.html" %}</div>
+{% endblock %}

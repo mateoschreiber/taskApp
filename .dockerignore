@@ -1,0 +1,6 @@
+.git
+target
+*.xlsx
+*.sqlite*
+.env
+secrets

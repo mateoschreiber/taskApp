@@ -1,0 +1,14 @@
+<form action="/exportar/descargar" method="get" class="export-form">
+  <p class="muted">Descarga las tareas guardadas de todas las tiendas en el período indicado.</p>
+  {% if !error.is_empty() %}<p class="notice error-notice" role="alert">{{ error }}</p>{% endif %}
+  <div class="export-grid">
+    <div class="field"><label for="export-from">Desde</label><input id="export-from" name="desde" type="date" value="{{ from }}" required></div>
+    <div class="field"><label for="export-through">Hasta</label><input id="export-through" name="hasta" type="date" value="{{ through }}" required></div>
+  </div>
+  <fieldset class="formats">
+    <legend>Formato</legend>
+    <label><input type="radio" name="formato" value="xlsx" {% if !pdf %}checked{% endif %}> Excel <small>Hoja editable</small></label>
+    <label><input type="radio" name="formato" value="pdf" {% if pdf %}checked{% endif %}> PDF <small>Informe para compartir</small></label>
+  </fieldset>
+  <button class="primary" type="submit">Descargar</button>
+</form>

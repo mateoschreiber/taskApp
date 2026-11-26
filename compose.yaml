@@ -1,0 +1,12 @@
+services:
+  app:
+    build: .
+    environment:
+      TASKAPP_MODE: local
+    ports:
+      - "127.0.0.1:${TASKAPP_PORT:-8080}:8080"
+    volumes:
+      - tasks:/data
+
+volumes:
+  tasks:

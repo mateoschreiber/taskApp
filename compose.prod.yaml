@@ -1,0 +1,30 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      TASKAPP_MODE: production
+      TASKAPP_ORIGIN: ${TASKAPP_ORIGIN:?Define la URL HTTPS pública}
+      TASKAPP_PASSWORD_HASH_FILE: /run/secrets/password_hash
+    secrets:
+      - password_hash
+    volumes:
+      - tasks:/data
+
+  cloudflared:
+    image: cloudflare/cloudflared:2026.11.0
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token-file /run/secrets/tunnel_token
+    secrets:
+      - tunnel_token
+    depends_on:
+      - app
+
+secrets:
+  password_hash:
+    file: ./secrets/password_hash
+  tunnel_token:
+    file: ./secrets/tunnel_token
+
+volumes:
+  tasks:

@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Hoy · taskApp{% endblock %}
+{% block navigation %}{% include "nav.html" %}{% endblock %}
+{% block content %}
+<div class="heading heading-row">
+  <div><p class="eyebrow">{{ date }}</p><h1>Hoy</h1></div>
+  <a class="primary add-task" href="{{ add_url }}" aria-label="Nueva tarea"><span aria-hidden="true">+</span> Nueva tarea</a>
+</div>
+<div class="today-layout">
+  <section class="stores" aria-labelledby="stores-heading">
+    <h2 id="stores-heading">Tiendas</h2>
+    <div class="store-list">
+      <a class="store-card all" href="/" {% if selected.is_empty() %}aria-current="true"{% endif %}>
+        <strong>Todas las tiendas</strong><span>{{ total }} {% if total == 1 %}tarea{% else %}tareas{% endif %}</span>
+      </a>
+      {% for store in stores %}
+        <a class="store-card tone-{{ store.tone }}" href="{{ store.url }}" {% if selected.as_str() == store.label.as_str() %}aria-current="true"{% endif %}>
+          <strong>{{ store.label }}</strong><span>{{ store.count }} {% if store.count == 1 %}tarea{% else %}tareas{% endif %}</span>
+        </a>
+      {% endfor %}
+    </div>
+  </section>
+  <section class="today-tasks" aria-labelledby="today-heading">
+    <h2 id="today-heading">{% if selected.is_empty() %}Trabajos de hoy{% else %}{{ selected }}{% endif %}</h2>
+    {% if tasks.is_empty() %}
+      <div class="panel empty"><p>Aún no hay tareas para hoy.</p><a class="back" href="{{ add_url }}">Registrar un trabajo</a></div>
+    {% else %}
+      <ul class="panel records">{% for task in tasks %}{% include "record.html" %}{% endfor %}</ul>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}
