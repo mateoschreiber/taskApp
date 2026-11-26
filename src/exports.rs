@@ -157,37 +157,46 @@ pub(crate) async fn download(
 
 fn excel(report: &Report) -> Result<Vec<u8>, rust_xlsxwriter::XlsxError> {
     let mut workbook = Workbook::new();
-    let ink = Color::RGB(0x172830);
-    let brand = Color::RGB(0x143B4E);
+    let ink = Color::RGB(0x231D20);
+    let wine = Color::RGB(0x600F24);
+    let red = Color::RGB(0xBC102A);
     let white = Color::White;
     let title = Format::new()
         .set_font_size(20)
         .set_bold()
         .set_font_color(white)
-        .set_background_color(brand)
+        .set_background_color(wine)
         .set_align(FormatAlign::VerticalCenter);
-    let subtitle = Format::new().set_font_color(brand).set_font_size(11);
+    let subtitle = Format::new()
+        .set_font_color(wine)
+        .set_font_size(11)
+        .set_background_color(Color::RGB(0xF9E8EA))
+        .set_align(FormatAlign::VerticalCenter);
     let heading = Format::new()
         .set_bold()
-        .set_background_color(brand)
+        .set_background_color(red)
         .set_font_color(white)
         .set_align(FormatAlign::VerticalCenter);
     let body = Format::new()
         .set_font_color(ink)
         .set_text_wrap()
         .set_align(FormatAlign::Top);
-    let striped = body.clone().set_background_color(Color::RGB(0xEEF4F6));
+    let striped = body.clone().set_background_color(Color::RGB(0xF7F5F2));
     let date_formats = [
         body.clone().set_num_format("dd/mm/yyyy"),
         striped.clone().set_num_format("dd/mm/yyyy"),
     ];
 
     let summary = workbook.add_worksheet();
-    summary.set_name("Resumen")?.set_screen_gridlines(false);
+    summary
+        .set_name("Resumen")?
+        .set_screen_gridlines(false)
+        .set_tab_color(wine);
     summary.set_column_width(0, 40)?.set_column_width(1, 20)?;
     summary
         .merge_range(0, 0, 0, 1, "Registro de trabajos", &title)?
-        .set_row_height(0, 40)?;
+        .set_row_height(0, 40)?
+        .set_row_height(1, 22)?;
     summary.merge_range(1, 0, 1, 1, &report.period, &subtitle)?;
     summary.write_string_with_format(3, 0, "Total de tareas", &heading)?;
     summary.write_number_with_format(3, 1, report.tasks.len() as f64, &heading)?;
@@ -202,12 +211,14 @@ fn excel(report: &Report) -> Result<Vec<u8>, rust_xlsxwriter::XlsxError> {
     sheet
         .set_name("Tareas")?
         .set_screen_gridlines(false)
+        .set_tab_color(red)
         .set_landscape();
     sheet.set_print_fit_to_pages(1, 0);
     sheet.set_freeze_panes(4, 2)?;
     sheet
         .merge_range(0, 0, 0, 7, "Trabajos realizados", &title)?
-        .set_row_height(0, 40)?;
+        .set_row_height(0, 40)?
+        .set_row_height(1, 22)?;
     sheet.merge_range(1, 0, 1, 7, &report.period, &subtitle)?;
     sheet.set_row_height(3, 25)?;
     for (index, (label, width)) in [
@@ -263,6 +274,16 @@ async fn pdf(report: Report) -> Result<Vec<u8>, AppError> {
     tokio::fs::write(
         path.join("report.typ"),
         include_str!("../reports/tasks.typ"),
+    )
+    .await?;
+    tokio::fs::write(
+        path.join("brand.png"),
+        include_bytes!("../assets/icon-192.png"),
+    )
+    .await?;
+    tokio::fs::write(
+        path.join("jornada.png"),
+        include_bytes!("../assets/jornada.png"),
     )
     .await?;
     tokio::fs::write(path.join("report.json"), serde_json::to_vec(&report)?).await?;

@@ -1,34 +1,30 @@
 {% extends "base.html" %}
-{% block title %}{% if offline %}Trabajo en este dispositivo{% else if editing %}Editar tarea{% else %}Nueva tarea{% endif %} · taskApp{% endblock %}
-{% block navigation %}{% if !offline %}{% include "nav.html" %}{% endif %}{% endblock %}
+{% block title %}{% if offline %}En este dispositivo{% else if editing %}Editar tarea{% else %}Nueva tarea{% endif %} · taskApp{% endblock %}
+{% block navigation %}{% if offline %}{% let active = "device" %}{% include "nav.html" %}{% else if editing %}{% let active = "edit" %}{% include "nav.html" %}{% else %}{% let active = "task" %}{% include "nav.html" %}{% endif %}{% endblock %}
 {% block content %}
-<div class="heading">
+{% if editing %}<a class="back-link" href="/historial"><svg class="ico" aria-hidden="true"><use href="#i-chevron-left"></use></svg> Historial</a>{% endif %}
+<header class="page-heading">
   {% if offline %}
-    <h1>En este dispositivo</h1>
-    <p id="device-state">Abre taskApp con conexión e inicia sesión para preparar el acceso sin conexión.</p>
+    <div><h1 id="task-title">En este dispositivo</h1><p id="device-state">Abre taskApp con conexión e inicia sesión para preparar el acceso sin conexión.</p></div>
   {% else if editing %}
-    <a class="back" href="/historial">← Volver al historial</a>
-    <h1>Editar tarea</h1>
-    <p>Actualiza los datos del trabajo registrado.</p>
+    <div><h1 id="task-title">Editar tarea</h1><p>Actualiza los datos del trabajo registrado.</p></div>
   {% else %}
-    <h1>Nueva tarea</h1>
-    <p>Registra un trabajo realizado en tienda.</p>
+    <div><h1 id="task-title">Nueva tarea</h1><p>Registra un trabajo realizado en tienda.</p></div>
   {% endif %}
-</div>
+</header>
 {% if offline %}
+<a id="device-login" class="primary" href="/login" hidden>Iniciar sesión <svg class="ico" aria-hidden="true"><use href="#i-arrow-right"></use></svg></a>
 <div id="device" hidden>
-  <div class="header-actions">
-    <button class="primary" id="device-new" type="button">+ Nueva tarea</button>
-    <button class="secondary" id="sync-now" type="button">Sincronizar ahora</button>
-    <a class="quiet" href="/">Ir a Hoy</a>
+  <div class="header-actions device-actions">
+    <button class="primary" id="device-new" type="button"><svg class="ico" aria-hidden="true"><use href="#i-plus"></use></svg> Nueva tarea</button>
+    <button class="secondary" id="sync-now" type="button"><svg class="ico" aria-hidden="true"><use href="#i-sync"></use></svg> Sincronizar ahora</button>
   </div>
-  <section id="device-list" aria-label="Tareas del dispositivo"></section>
 </div>
 {% endif %}
-{% if saved %}<p class="notice success" role="status">✓ Tarea guardada. Puedes cargar la siguiente.</p>{% endif %}
+{% if saved %}<p class="notice success" role="status">Tarea guardada. Puedes cargar la siguiente.</p>{% endif %}
 {% if has_errors %}<p class="notice error-notice" role="alert">Revisa los campos marcados para guardar la tarea.</p>{% endif %}
 {% if let Some(task) = conflict.as_ref() %}
-<aside class="panel conflict" role="alert">
+<aside class="paper-card conflict" role="alert">
   <h2>La tarea cambió</h2>
   <p>Compara la versión guardada con tu edición en el formulario antes de guardar.</p>
   <dl>
@@ -40,46 +36,42 @@
   <a class="secondary" href="{{ action }}">Usar versión guardada</a>
 </aside>
 {% endif %}
-
-<form action="{{ action }}" method="post" class="panel task-form" {% if offline %}hidden data-device-form{% endif %}>
+<form action="{{ action }}" method="post" class="paper-card task-form" aria-labelledby="{% if offline %}device-form-title{% else %}task-title{% endif %}" {% if offline %}hidden data-device-form{% endif %}>
+  {% if offline %}<h2 id="device-form-title">Nueva tarea</h2>{% endif %}
   <input type="hidden" name="csrf" value="{{ csrf }}">
   <input type="hidden" name="revision" value="{{ revision }}">
-  <div class="form-grid">
-    <div class="field">
-      <label for="date">Fecha de actividad</label>
-      <input type="date" id="date" name="date" value="{{ date }}" required
-        {% if !date_error.is_empty() %}aria-invalid="true" aria-describedby="date-error"{% endif %}>
-      {% if !date_error.is_empty() %}<p class="field-error" id="date-error">{{ date_error }}</p>{% endif %}
-    </div>
-    {% for field in fields %}
-    <div class="field {% if field.key == "work" %}wide{% endif %}" data-choice>
-      <label for="{{ field.key }}">{{ field.label }}</label>
-      <select name="{{ field.key }}" id="{{ field.key }}" required
-        {% if !field.error.is_empty() && field.selected != "__new__" %}aria-invalid="true" aria-describedby="{{ field.key }}-error"{% endif %}>
-        <option value="">Selecciona una opción</option>
-        {% for option in field.options %}
-          <option value="{{ option }}"{% if option.as_str() == field.selected.as_str() %} selected{% endif %}>{{ option }}</option>
-        {% endfor %}
-        <option value="__new__"{% if field.selected == "__new__" %} selected{% endif %}>Agregar opción…</option>
-      </select>
-      <div class="field custom">
-        <label for="{{ field.key }}-new">Nueva opción · {{ field.label }}</label>
-        <input id="{{ field.key }}-new" name="{{ field.key }}_new" value="{{ field.new_value }}" maxlength="160"
-          {% if !field.error.is_empty() && field.selected == "__new__" %}aria-invalid="true" aria-describedby="{{ field.key }}-error"{% endif %}>
+  <fieldset class="task-group">
+    <legend><span class="group-icon"><svg class="ico" aria-hidden="true"><use href="#i-store"></use></svg></span> Datos de tienda</legend>
+    <div class="form-grid">
+      <div class="field">
+        <label for="date">Fecha de actividad</label>
+        <input type="date" id="date" name="date" value="{{ date }}" required
+          {% if !date_error.is_empty() %}aria-invalid="true" aria-describedby="date-error"{% endif %}>
+        {% if !date_error.is_empty() %}<p class="field-error" id="date-error">{{ date_error }}</p>{% endif %}
       </div>
-      {% if !field.error.is_empty() %}<p class="field-error" id="{{ field.key }}-error">{{ field.error }}</p>{% endif %}
+      {% for field in fields %}
+        {% if field.key == "store" || field.key == "supervisor" || field.key == "zone" %}{% include "choice.html" %}{% endif %}
+      {% endfor %}
     </div>
-    {% endfor %}
-    <div class="field wide">
-      <label for="notes">Detalle / observaciones <span class="optional">Opcional</span></label>
-      <textarea id="notes" name="notes" rows="4" maxlength="2000" placeholder="Indicaciones, hallazgos o próximos pasos"
-        {% if !notes_error.is_empty() %}aria-invalid="true" aria-describedby="notes-error"{% endif %}>{{ notes }}</textarea>
-      {% if !notes_error.is_empty() %}<p class="field-error" id="notes-error">{{ notes_error }}</p>{% endif %}
+  </fieldset>
+  <fieldset class="task-group">
+    <legend><span class="group-icon"><svg class="ico" aria-hidden="true"><use href="#i-briefcase"></use></svg></span> Detalle del trabajo</legend>
+    <div class="form-grid">
+      {% for field in fields %}
+        {% if field.key == "work" || field.key == "intervention" || field.key == "status" %}{% include "choice.html" %}{% endif %}
+      {% endfor %}
+      <div class="field wide">
+        <label for="notes">Detalle / observaciones <span class="optional">Opcional</span></label>
+        <textarea id="notes" name="notes" rows="3" maxlength="2000" placeholder="Indicaciones, hallazgos o próximos pasos"
+          {% if !notes_error.is_empty() %}aria-invalid="true" aria-describedby="notes-error"{% endif %}>{{ notes }}</textarea>
+        {% if !notes_error.is_empty() %}<p class="field-error" id="notes-error">{{ notes_error }}</p>{% endif %}
+      </div>
     </div>
-  </div>
-  <div class="actions">
-    <button type="submit" class="primary">{% if editing %}Guardar cambios{% else %}Guardar tarea{% endif %}</button>
-    {% if editing %}<a href="/historial" class="quiet">Cancelar</a>{% endif %}
+  </fieldset>
+  <div class="task-actions">
+    <button type="submit" class="primary"><svg class="ico" aria-hidden="true"><use href="#i-check"></use></svg> <span data-submit-label>{% if editing %}Guardar cambios{% else %}Guardar tarea{% endif %}</span></button>
+    {% if editing %}<a href="/historial" class="quiet">Cancelar</a>{% else if offline %}<button class="quiet" id="device-cancel" type="button">Cancelar</button>{% endif %}
   </div>
 </form>
+{% if offline %}<section id="device-list" aria-label="Tareas del dispositivo"></section>{% endif %}
 {% endblock %}

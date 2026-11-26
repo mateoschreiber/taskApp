@@ -83,6 +83,11 @@ asset!(icon, "icon-192.png", "image/png");
 asset!(apple_icon, "icon-180.png", "image/png");
 asset!(large_icon, "icon-512.png", "image/png");
 asset!(mask_icon, "icon-maskable.png", "image/png");
+asset!(favicon, "icon-32.png", "image/png");
+asset!(brand, "mark.svg", "image/svg+xml");
+asset!(illustration, "jornada.png", "image/png");
+asset!(workspace_css, "workspace.css", "text/css; charset=utf-8");
+asset!(display_font, "bricolage-latin.woff2", "font/woff2");
 
 async fn headers(request: axum::extract::Request, next: middleware::Next) -> Response {
     let mut response = next.run(request).await;
@@ -92,7 +97,7 @@ async fn headers(request: axum::extract::Request, next: middleware::Next) -> Res
         ("referrer-policy", "same-origin"),
         (
             "content-security-policy",
-            "default-src 'none'; style-src 'self'; script-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; img-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+            "default-src 'none'; style-src 'self'; script-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; img-src 'self'; font-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
         ),
     ] {
         response
@@ -155,6 +160,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .route("/login", get(auth::login_page).post(auth::login))
         .route("/salir", axum::routing::post(auth::logout))
         .route("/app.css", get(css))
+        .route("/workspace.css", get(workspace_css))
+        .route("/bricolage-latin.woff2", get(display_font))
+        .route("/mark.svg", get(brand))
+        .route("/jornada.png", get(illustration))
+        .route("/icon-32.png", get(favicon))
         .route("/app.js", get(js))
         .route("/offline.js", get(offline_js))
         .route("/sin-conexion", get(tasks::offline_page))

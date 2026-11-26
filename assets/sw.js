@@ -1,7 +1,9 @@
-const CACHE = 'taskapp-static-v1';
+const CACHE = 'taskapp-static-v2';
 const SHELL = '/sin-conexion';
-const STATIC = [SHELL, '/app.css', '/app.js', '/offline.js', '/manifest.webmanifest',
+// Bump the cache version when replacing the artwork or typeface.
+const MEDIA = ['/bricolage-latin.woff2', '/mark.svg', '/jornada.png', '/icon-32.png',
   '/icon-180.png', '/icon-192.png', '/icon-512.png', '/icon-maskable.png'];
+const STATIC = [SHELL, '/app.css', '/workspace.css', '/app.js', '/offline.js', '/manifest.webmanifest', ...MEDIA];
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(STATIC)));
@@ -20,6 +22,10 @@ self.addEventListener('fetch', event => {
   const { request } = event;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin || request.method !== 'GET') return;
+  if (MEDIA.includes(url.pathname)) {
+    event.respondWith(caches.open(CACHE).then(async cache => await cache.match(url.pathname) || fetch(request)));
+    return;
+  }
   const navigation = request.mode === 'navigate' && (
     ['/', '/historial', '/login', '/exportar', SHELL].includes(url.pathname)
     || /^\/tareas\/(nueva|\d+)$/.test(url.pathname)

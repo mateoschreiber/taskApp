@@ -1,66 +1,78 @@
-<p align="center">
-  <img src="assets/icon-192.png" alt="" width="76" height="76">
-</p>
+# ![taskApp · Bitácora de trabajo diario](docs/media/cover.png)
 
-<h1 align="center">taskApp</h1>
+Registra cada trabajo desde la tienda. Al cerrar la jornada, puedes consultar qué se hizo, qué quedó pendiente y sacar un informe para compartir. taskApp es una aplicación privada para móvil y escritorio.
 
-<p align="center">Registro privado de trabajos diarios en tienda.</p>
-
-<p align="center">
-  <a href="#puesta-en-marcha">Puesta en marcha</a> ·
-  <a href="#uso-diario">Uso diario</a> ·
-  <a href="#instalación-y-uso-sin-conexión">Instalación y uso sin conexión</a> ·
-  <a href="#despliegue-en-servidor">Despliegue en servidor</a>
-</p>
+[Puesta en marcha](#puesta-en-marcha) · [Jornada](#la-jornada-en-tienda) · [Informes](#del-historial-al-informe) · [Uso sin conexión](#llevarla-en-el-móvil) · [Servidor](#despliegue-en-servidor)
 
 ## Puesta en marcha
 
-Con Docker y Docker Compose, ejecuta este comando desde la raíz del repositorio.
+Desde la raíz del proyecto, con Docker y Docker Compose instalados, ejecuta el siguiente comando.
 
 ```sh
 docker compose up --build -d
 ```
 
-Abre [taskApp en esta PC](http://127.0.0.1:8080). Para pruebas locales, el usuario y la contraseña son `admin`. El puerto se publica en `127.0.0.1`. Si el `8080` está ocupado, define `TASKAPP_PORT` en `.env` y usa ese puerto en la URL.
+Abre **[taskApp en esta PC](http://127.0.0.1:8080)**. Para pruebas locales, usa `admin` como usuario y contraseña. Si necesitas otro puerto, define `TASKAPP_PORT` en `.env`. Esta configuración permite el acceso desde esa misma PC.
 
-Al crear la base, las migraciones cargan **33 opciones iniciales** de la hoja `Hoja1` del Excel fuente. El historial comienza vacío. Las tareas se guardan en SQLite, dentro del volumen `tasks`, y se conservan al recrear el contenedor.
+La primera ejecución prepara un historial vacío y **33 opciones** tomadas de `Hoja1` del Excel original. Los nuevos registros se guardan en SQLite dentro del volumen `tasks` y se conservan al recrear el contenedor.
 
-## Uso diario
+## La jornada en tienda
 
-| Dónde | Qué puedes hacer |
+En **Hoy**, consulta cuántas tareas se registraron y en cuántas tiendas. Abre **Filtrar por tienda** para ver un local y toca **Nueva tarea** en la cabecera de la jornada. El formulario conserva la tienda elegida y propone la fecha de Paraguay. Escribe parte del nombre de un trabajo para buscarlo. Los campos de tienda, supervisor, zona, intervención y estado también sugieren opciones. Si necesitas una nueva, elige **Agregar** antes de guardar.
+
+<picture>
+  <source media="(max-width: 600px)" srcset="docs/media/mobile.png">
+  <img src="docs/media/desktop.png" alt="Pantalla Hoy con la actividad de la jornada, el acceso a Nueva tarea y el filtro de tiendas.">
+</picture>
+
+[Ver captura móvil](docs/media/mobile.png) · [Ver captura de escritorio](docs/media/desktop.png)
+
+## Del historial al informe
+
+En **Historial → Exportar**, elige el primer y el último día. La descarga incluye ambas fechas y los registros guardados de todas las tiendas.
+
+| Formato | Qué contiene |
 | --- | --- |
-| **Hoy** | Consultar las tareas del día en horario de Paraguay, filtrar por tienda y abrir el formulario con esa tienda preseleccionada. |
-| **Nueva tarea** | Registrar un trabajo por vez. Escribe para buscar en los catálogos y selecciona **Agregar «valor»** cuando necesites una opción nueva. |
-| **Historial** | Consultar y editar los registros. Desde **Exportar**, elige las fechas y el formato. Se incluyen ambas fechas y los registros guardados de todas las tiendas. |
+| **Excel · .xlsx** | Dos hojas. **Resumen** reúne los totales y **Tareas** conserva los campos del registro, las fechas de Excel, las observaciones y los filtros por columna. |
+| **PDF · A4** | Un informe listo para compartir, con resumen por estado, trabajos agrupados por fecha, observaciones completas y paginación. |
 
-**Excel** incluye las hojas **Resumen** y **Tareas**, con fechas nativas, filtros y observaciones. **PDF** genera un informe A4 con resumen por estado, fichas agrupadas por fecha y páginas numeradas.
+<details>
+<summary><strong>Ver una página del informe PDF</strong></summary>
 
-## Instalación y uso sin conexión
+![Página de muestra del informe de trabajos realizados con datos ficticios.](docs/media/report.png)
 
-Instala la PWA desde el menú de Chromium. En Safari para iPhone, abre **Compartir → Agregar a pantalla de inicio**. Para instalarla, usa la URL HTTPS del servidor o abre la app desde localhost.
+</details>
 
-Al iniciar sesión con conexión, se prepara una copia local de los catálogos y de las tareas de los últimos 30 días. Puedes crear tareas y editar las que estén en esa copia. El historial completo y la exportación requieren conexión.
+## Llevarla en el móvil
 
-Los cambios se envían al recuperar la conexión con la app abierta o al volver a abrirla. En **Pendientes** puedes reintentar el envío y comparar tu edición con la versión del servidor si hubo un conflicto. Si la sesión vence, vuelve a iniciar sesión para recuperar la cola. El cierre de sesión limpia la copia del dispositivo y, si quedan cambios pendientes, pide confirmación antes de descartarlos.
+Abre la URL **HTTPS** del servidor desde el teléfono. En Chromium, elige la opción de instalar la aplicación en el menú del navegador. En Safari para iPhone, usa **Compartir → Agregar a pantalla de inicio**.
+
+| Durante la jornada | Qué sucede |
+| --- | --- |
+| **Preparar la visita** | Al entrar con conexión se descargan los catálogos y las tareas de los últimos 30 días. La copia permite trabajar hasta ocho horas desde la última actualización. |
+| **Trabajar sin señal** | Puedes registrar tareas y editar las que ya están en el dispositivo. El historial completo y las exportaciones requieren conexión. |
+| **Volver a tener señal** | Con la app abierta, los cambios se envían automáticamente. En **Dispositivo** puedes reintentar el envío o comparar dos versiones de una tarea y decidir cuál conservar. |
+
+Si vence la sesión, vuelve a entrar con conexión para recuperar los cambios pendientes. **Cerrar sesión** borra los datos de ese dispositivo y pide confirmación si quedan cambios por enviar.
 
 ## Despliegue en servidor
 
-1. En Cloudflare Tunnel, configura el dominio público para que apunte a `http://app:8080`. Habilita la redirección a HTTPS. El inicio de sesión se realiza en taskApp.
-2. Guarda el token del túnel en `secrets/tunnel_token`. Genera el hash Argon2id con `cargo run --locked -- hash-password` y guarda únicamente la salida del comando en `secrets/password_hash`, como UTF-8 sin BOM. La contraseña debe tener al menos 15 caracteres. Da permiso de lectura al usuario del contenedor que consume cada secreto. El contenedor de taskApp usa el UID `65532`.
-3. Define `TASKAPP_ORIGIN=https://tu-dominio` en `.env`, sin barra final. Levanta el entorno de producción con este comando.
+1. Crea un túnel de Cloudflare y dirige el dominio público a `http://app:8080`. Activa la redirección a HTTPS y guarda el token del túnel en `secrets/tunnel_token`.
+2. Desde la raíz, ejecuta `cargo run --locked -- hash-password`. Elige una contraseña de al menos 15 caracteres. Guarda el hash Argon2id que imprime en `secrets/password_hash`, en UTF-8 sin BOM, y concede lectura al usuario del contenedor correspondiente. taskApp usa el UID `65532`.
+3. En `.env`, asigna el dominio a `TASKAPP_ORIGIN`, por ejemplo `https://tareas.ejemplo.com`, sin barra final. Inicia los servicios.
 
    ```sh
    docker compose -f compose.prod.yaml up --build -d
    ```
 
-4. Abre el dominio por HTTPS e inicia sesión como `admin` con la contraseña nueva. La app escucha dentro de la red de Compose y Cloudflare Tunnel conecta el dominio con ella.
+4. Abre el dominio por HTTPS e inicia sesión como `admin` con la contraseña elegida.
 
 > [!IMPORTANT]
-> El Excel fuente, `.env`, los secretos y la base de trabajo se conservan fuera de Git. Para trasladar una instalación, detén la app y copia el volumen completo de SQLite.
+> Conserva fuera de Git el Excel original, `.env`, los secretos y la base de trabajo. Para trasladar la instalación, detén la app antes de copiar el volumen completo de SQLite.
 
 ## Desarrollo
 
-El servidor usa **Rust, Axum y Askama**. **SQLite** guarda los registros y sus revisiones. La PWA usa **IndexedDB** para las copias y los cambios pendientes. Las exportaciones se generan en el servidor con **rust_xlsxwriter** y **Typst**. La imagen de Docker ya incluye Typst. Si ejecutas la app directamente con Cargo, agrega Typst al `PATH` para habilitar PDF.
+El servidor usa **Rust, Axum y Askama**. SQLite conserva las tareas y sus revisiones. La PWA guarda la copia de trabajo en IndexedDB. El servidor genera Excel con **rust_xlsxwriter** y PDF con **Typst**. Docker incluye Typst. Para exportar PDF al ejecutar con Cargo, instala Typst y déjalo disponible en el `PATH`.
 
 ```sh
 cargo fmt --check

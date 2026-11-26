@@ -1,36 +1,34 @@
 {% extends "base.html" %}
 {% block title %}Historial · taskApp{% endblock %}
-{% block navigation %}{% include "nav.html" %}{% endblock %}
+{% block navigation %}{% let active = "history" %}{% include "nav.html" %}{% endblock %}
 {% block content %}
-<div class="heading heading-row">
-  <div>
-    <h1>Historial</h1>
-    <p>Consulta y edita los trabajos registrados.</p>
+<header class="page-heading">
+  <div><h1>Historial</h1><p>Todos tus trabajos, del más reciente al más antiguo.</p></div>
+  <div class="header-actions"><a class="secondary" href="/exportar" data-open-export><svg class="ico" aria-hidden="true"><use href="#i-download"></use></svg> Exportar</a><a class="primary" href="/tareas/nueva"><svg class="ico" aria-hidden="true"><use href="#i-plus"></use></svg> Nueva tarea</a></div>
+</header>
+<dialog id="export-dialog" class="export-dialog" aria-labelledby="export-title">
+  <div class="export-head">
+    <span class="export-mark"><svg class="ico" aria-hidden="true"><use href="#i-download"></use></svg></span>
+    <form method="dialog"><button type="submit" class="close-export" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="#i-close"></use></svg></button></form>
+    <h2 id="export-title">Exportar tareas</h2>
   </div>
-  <div class="header-actions"><a class="secondary" href="/exportar" data-open-export>Exportar</a><a class="primary" href="/tareas/nueva">+ Nueva tarea</a></div>
-</div>
-<dialog id="export-dialog" aria-labelledby="export-title">
-  <div class="dialog-header"><h2 id="export-title">Exportar tareas</h2><form method="dialog"><button type="submit" class="quiet" aria-label="Cerrar">×</button></form></div>
   {% include "export_form.html" %}
 </dialog>
-{% if edited %}<p class="notice success" role="status">✓ Cambios guardados.</p>{% endif %}
+{% if edited %}<p class="notice success" role="status">Cambios guardados.</p>{% endif %}
 {% if tasks.is_empty() %}
-  <div class="panel empty">
+  <div class="paper-card empty-state">
+    <span class="empty-symbol"><svg class="ico" aria-hidden="true"><use href="#i-history"></use></svg></span>
     <h2>{% if number == 1 %}Aún no hay tareas{% else %}Esta página está vacía{% endif %}</h2>
-    {% if number == 1 %}<p>Tu primer trabajo aparecerá aquí después de guardarlo.</p>{% endif %}
+    {% if number == 1 %}<p>Tu primer trabajo aparecerá aquí después de guardarlo.</p><a class="text-action" href="/tareas/nueva">Registrar una tarea <svg class="ico" aria-hidden="true"><use href="#i-arrow-right"></use></svg></a>{% endif %}
   </div>
 {% else %}
-  <ul class="panel records">
-    {% for task in tasks %}
-    {% include "record.html" %}
-    {% endfor %}
-  </ul>
+  <ul class="paper-card work-records">{% for task in tasks %}{% include "record.html" %}{% endfor %}</ul>
 {% endif %}
 {% if number > 1 || has_next %}
 <nav class="pager" aria-label="Páginas del historial">
-  {% if number > 1 %}<a href="/historial?page={{ prev }}">← Anterior</a>{% endif %}
+  {% if number > 1 %}<a class="text-action" href="/historial?page={{ prev }}"><svg class="ico" aria-hidden="true"><use href="#i-chevron-left"></use></svg> Anterior</a>{% endif %}
   <span>Página {{ number }}</span>
-  {% if has_next %}<a href="/historial?page={{ next }}">Siguiente →</a>{% endif %}
+  {% if has_next %}<a class="text-action" href="/historial?page={{ next }}">Siguiente <svg class="ico" aria-hidden="true"><use href="#i-chevron-right"></use></svg></a>{% endif %}
 </nav>
 {% endif %}
 {% endblock %}

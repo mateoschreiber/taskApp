@@ -135,6 +135,13 @@ for (const field of document.querySelectorAll('[data-choice]')) {
   });
 }
 
+const stores = document.querySelector('.store-picker');
+if (stores) {
+  const desktop = matchMedia('(min-width: 72rem)');
+  stores.open = desktop.matches;
+  desktop.addEventListener('change', event => { stores.open = event.matches; });
+}
+
 const dialog = document.querySelector('#export-dialog');
 document.querySelector('[data-open-export]')?.addEventListener('click', event => {
   if (typeof dialog?.showModal === 'function' && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
@@ -150,7 +157,17 @@ for (const form of document.querySelectorAll('.export-form')) {
   validateRange();
 }
 
-const history = location.pathname === '/historial' || location.pathname.startsWith('/exportar');
-document.querySelector('.nav a[href="' + (history ? '/historial' : '/') + '"]')?.setAttribute('aria-current', 'page');
+const connection = document.querySelector('[data-connection]');
+function showConnection(online) {
+  if (!connection) return;
+  connection.querySelector('[data-connection-label]').textContent = online ? 'En línea' : 'Sin conexión';
+  connection.classList.toggle('is-offline', !online);
+  connection.hidden = false;
+}
+if (connection) {
+  showConnection(navigator.onLine);
+  window.addEventListener('online', () => showConnection(true));
+  window.addEventListener('offline', () => showConnection(false));
+}
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
-startOffline();
+startOffline(showConnection);

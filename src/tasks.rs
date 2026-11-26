@@ -7,7 +7,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Redirect, Response},
 };
-use chrono::{NaiveDate, Utc};
+use chrono::{Datelike, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, SqlitePool};
 use tower_sessions::Session;
@@ -25,6 +25,20 @@ const FIELDS: [(&str, &str); 6] = [
 ];
 const ADD: &str = "__new__";
 const PAGE_SIZE: i64 = 20;
+const MONTHS: [&str; 12] = [
+    "enero",
+    "febrero",
+    "marzo",
+    "abril",
+    "mayo",
+    "junio",
+    "julio",
+    "agosto",
+    "septiembre",
+    "octubre",
+    "noviembre",
+    "diciembre",
+];
 
 type Values = HashMap<String, String>;
 
@@ -43,6 +57,20 @@ pub(crate) struct Task {
 }
 
 impl Task {
+    fn display_date(&self) -> String {
+        parse_date(&self.activity_date).map_or_else(
+            || self.activity_date.clone(),
+            |date| {
+                format!(
+                    "{} {} {}",
+                    date.day(),
+                    &MONTHS[date.month0() as usize][..3],
+                    date.year()
+                )
+            },
+        )
+    }
+
     fn values(&self) -> Values {
         [
             ("date", self.activity_date.as_str()),
@@ -542,13 +570,13 @@ struct Today {
     selected: String,
     add_url: String,
     total: usize,
+    active_stores: usize,
 }
 
 struct StoreCard {
     label: String,
     url: String,
     count: usize,
-    tone: usize,
 }
 
 #[derive(Deserialize)]
@@ -574,12 +602,10 @@ pub(crate) async fn home(
         .await?
         .into_iter()
         .filter(|row| row.kind == "store")
-        .enumerate()
-        .map(|(index, row)| StoreCard {
+        .map(|row| StoreCard {
             count: counts.get(row.label.as_str()).copied().unwrap_or(0),
             url: format!("/?tienda={}", urlencoding::encode(&row.label)),
             label: row.label,
-            tone: index % 5,
         })
         .collect();
     let selected = query
@@ -587,6 +613,7 @@ pub(crate) async fn home(
         .filter(|name| stores.iter().any(|store| &store.label == name))
         .unwrap_or_default();
     let total = tasks.len();
+    let active_stores = counts.len();
     if !selected.is_empty() {
         tasks.retain(|task| task.store == selected);
     }
@@ -597,12 +624,26 @@ pub(crate) async fn home(
     };
     page(Today {
         csrf: auth::csrf(&session).await?,
-        date: date.format("%d/%m/%Y").to_string(),
+        date: format!(
+            "{}, {} de {}",
+            [
+                "Lunes",
+                "Martes",
+                "Miércoles",
+                "Jueves",
+                "Viernes",
+                "Sábado",
+                "Domingo"
+            ][date.weekday().num_days_from_monday() as usize],
+            date.day(),
+            MONTHS[date.month0() as usize],
+        ),
         tasks,
         stores,
         selected,
         add_url,
         total,
+        active_stores,
     })
 }
 

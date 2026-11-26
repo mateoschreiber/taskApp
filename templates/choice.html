@@ -1,0 +1,17 @@
+<div class="field {% if field.key == "work" %}wide{% endif %}" data-choice>
+  <label for="{{ field.key }}">{{ field.label }}</label>
+  <select name="{{ field.key }}" id="{{ field.key }}" required
+    {% if !field.error.is_empty() && field.selected != "__new__" %}aria-invalid="true" aria-describedby="{{ field.key }}-error"{% endif %}>
+    <option value="">Selecciona una opción</option>
+    {% for option in field.options %}
+      <option value="{{ option }}"{% if option.as_str() == field.selected.as_str() %} selected{% endif %}>{{ option }}</option>
+    {% endfor %}
+    <option value="__new__"{% if field.selected == "__new__" %} selected{% endif %}>Agregar opción…</option>
+  </select>
+  <div class="field custom">
+    <label for="{{ field.key }}-new">Nueva opción · {{ field.label }}</label>
+    <input id="{{ field.key }}-new" name="{{ field.key }}_new" value="{{ field.new_value }}" maxlength="160"
+      {% if !field.error.is_empty() && field.selected == "__new__" %}aria-invalid="true" aria-describedby="{{ field.key }}-error"{% endif %}>
+  </div>
+  {% if !field.error.is_empty() %}<p class="field-error" id="{{ field.key }}-error">{{ field.error }}</p>{% endif %}
+</div>

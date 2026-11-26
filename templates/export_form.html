@@ -1,14 +1,14 @@
-<form action="/exportar/descargar" method="get" class="export-form">
-  <p class="muted">Descarga las tareas guardadas de todas las tiendas en el período indicado.</p>
+<form action="/exportar/descargar" method="get" class="export-form" aria-labelledby="export-title">
+  <p class="export-description">Incluye las tareas de todas las tiendas entre ambas fechas.</p>
   {% if !error.is_empty() %}<p class="notice error-notice" role="alert">{{ error }}</p>{% endif %}
   <div class="export-grid">
     <div class="field"><label for="export-from">Desde</label><input id="export-from" name="desde" type="date" value="{{ from }}" required></div>
     <div class="field"><label for="export-through">Hasta</label><input id="export-through" name="hasta" type="date" value="{{ through }}" required></div>
   </div>
-  <fieldset class="formats">
-    <legend>Formato</legend>
-    <label><input type="radio" name="formato" value="xlsx" {% if !pdf %}checked{% endif %}> Excel <small>Hoja editable</small></label>
-    <label><input type="radio" name="formato" value="pdf" {% if pdf %}checked{% endif %}> PDF <small>Informe para compartir</small></label>
+  <fieldset class="export-formats">
+    <legend>Formato de archivo</legend>
+    <label><span class="file-symbol"><svg class="ico" aria-hidden="true"><use href="#i-sheet"></use></svg></span><span><strong>Excel</strong><small>Hoja editable · XLSX</small></span><input type="radio" name="formato" value="xlsx" {% if !pdf %}checked{% endif %}></label>
+    <label><span class="file-symbol"><svg class="ico" aria-hidden="true"><use href="#i-file"></use></svg></span><span><strong>PDF</strong><small>Informe para compartir</small></span><input type="radio" name="formato" value="pdf" {% if pdf %}checked{% endif %}></label>
   </fieldset>
-  <button class="primary" type="submit">Descargar</button>
+  <button class="primary export-submit" type="submit"><svg class="ico" aria-hidden="true"><use href="#i-download"></use></svg> Descargar</button>
 </form>

@@ -1,7 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Exportar · taskApp{% endblock %}
-{% block navigation %}{% include "nav.html" %}{% endblock %}
+{% block title %}Exportar tareas · taskApp{% endblock %}
+{% block navigation %}{% let active = "export" %}{% include "nav.html" %}{% endblock %}
 {% block content %}
-<div class="heading"><a class="back" href="/historial">← Historial</a><h1>Exportar tareas</h1></div>
-<div class="panel export-panel">{% include "export_form.html" %}</div>
+<a class="back-link" href="/historial"><svg class="ico" aria-hidden="true"><use href="#i-chevron-left"></use></svg> Historial</a>
+<div class="paper-card export-sheet">
+  <header class="export-head"><span class="export-mark"><svg class="ico" aria-hidden="true"><use href="#i-download"></use></svg></span><h1 id="export-title">Exportar tareas</h1></header>
+  {% include "export_form.html" %}
+</div>
 {% endblock %}

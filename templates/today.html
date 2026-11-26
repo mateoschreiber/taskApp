@@ -1,31 +1,44 @@
 {% extends "base.html" %}
-{% block title %}Hoy · taskApp{% endblock %}
-{% block navigation %}{% include "nav.html" %}{% endblock %}
+{% block title %}Mi jornada · taskApp{% endblock %}
+{% block navigation %}{% let active = "today" %}{% include "nav.html" %}{% endblock %}
 {% block content %}
-<div class="heading heading-row">
-  <div><p class="eyebrow">{{ date }}</p><h1>Hoy</h1></div>
-  <a class="primary add-task" href="{{ add_url }}" aria-label="Nueva tarea"><span aria-hidden="true">+</span> Nueva tarea</a>
-</div>
-<div class="today-layout">
-  <section class="stores" aria-labelledby="stores-heading">
-    <h2 id="stores-heading">Tiendas</h2>
-    <div class="store-list">
-      <a class="store-card all" href="/" {% if selected.is_empty() %}aria-current="true"{% endif %}>
-        <strong>Todas las tiendas</strong><span>{{ total }} {% if total == 1 %}tarea{% else %}tareas{% endif %}</span>
-      </a>
-      {% for store in stores %}
-        <a class="store-card tone-{{ store.tone }}" href="{{ store.url }}" {% if selected.as_str() == store.label.as_str() %}aria-current="true"{% endif %}>
-          <strong>{{ store.label }}</strong><span>{{ store.count }} {% if store.count == 1 %}tarea{% else %}tareas{% endif %}</span>
-        </a>
-      {% endfor %}
+<section class="journal-cover" aria-labelledby="journal-title">
+  <div class="cover-visual">
+    <img class="cover-art" src="/jornada.png" alt="" fetchpriority="high">
+    <div class="cover-copy">
+      <p class="cover-date"><svg class="ico" aria-hidden="true"><use href="#i-calendar"></use></svg> {{ date }}</p>
+      <h1 id="journal-title">Mi jornada</h1>
+      <a class="cover-action" href="{{ add_url }}"><svg class="ico" aria-hidden="true"><use href="#i-plus"></use></svg> Nueva tarea</a>
     </div>
-  </section>
-  <section class="today-tasks" aria-labelledby="today-heading">
-    <h2 id="today-heading">{% if selected.is_empty() %}Trabajos de hoy{% else %}{{ selected }}{% endif %}</h2>
+  </div>
+  <div class="cover-totals">
+    <div><span class="metric-symbol"><svg class="ico" aria-hidden="true"><use href="#i-clipboard"></use></svg></span><dl><dt>Tareas de hoy</dt><dd>{{ total }}</dd></dl></div>
+    <div><span class="metric-symbol"><svg class="ico" aria-hidden="true"><use href="#i-store"></use></svg></span><dl><dt>Tiendas con actividad</dt><dd>{{ active_stores }}</dd></dl></div>
+  </div>
+</section>
+<div class="journal-desk">
+  <details class="store-picker">
+    <summary><span class="filter-icon"><svg class="ico" aria-hidden="true"><use href="#i-store"></use></svg></span><span class="store-filter-name"><small>Filtrar por tienda</small><strong>{% if selected.is_empty() %}Todas las tiendas{% else %}{{ selected }}{% endif %}</strong></span><span class="filter-caret"><svg class="ico" aria-hidden="true"><use href="#i-chevron-right"></use></svg></span></summary>
+    <nav class="store-options" aria-label="Filtrar las tareas por tienda">
+      <a href="/" {% if selected.is_empty() %}aria-current="true"{% endif %}><span>Todas las tiendas</span><span class="store-total" aria-label="{{ total }} tareas">{{ total }}</span></a>
+      {% for store in stores %}
+        <a href="{{ store.url }}" {% if selected.as_str() == store.label.as_str() %}aria-current="true"{% endif %}><span class="store-name">{{ store.label.to_lowercase() }}</span><span class="store-total" aria-label="{{ store.count }} tareas">{{ store.count }}</span></a>
+      {% endfor %}
+    </nav>
+  </details>
+  <section class="journal-activity" aria-labelledby="activity-title">
+    <div class="section-heading">
+      <h2 id="activity-title">Actividad de hoy</h2>
+      <a class="text-action" href="/historial">Ver historial <svg class="ico" aria-hidden="true"><use href="#i-arrow-right"></use></svg></a>
+    </div>
     {% if tasks.is_empty() %}
-      <div class="panel empty"><p>Aún no hay tareas para hoy.</p><a class="back" href="{{ add_url }}">Registrar un trabajo</a></div>
+      <div class="paper-card empty-state">
+        <span class="empty-symbol"><svg class="ico" aria-hidden="true"><use href="#i-clipboard"></use></svg></span>
+        <h3>{% if selected.is_empty() %}Aún no hay tareas para hoy{% else %}Sin tareas en esta tienda{% endif %}</h3>
+        <a class="text-action" href="{{ add_url }}">Registrar un trabajo <svg class="ico" aria-hidden="true"><use href="#i-arrow-right"></use></svg></a>
+      </div>
     {% else %}
-      <ul class="panel records">{% for task in tasks %}{% include "record.html" %}{% endfor %}</ul>
+      <ul class="paper-card work-records">{% for task in tasks %}{% include "record.html" %}{% endfor %}</ul>
     {% endif %}
   </section>
 </div>

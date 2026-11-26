@@ -61,9 +61,10 @@ function button(label, action, style = 'quiet') {
   return node;
 }
 
-export async function startOffline() {
+export async function startOffline(showConnection) {
   const message = document.querySelector('#app-message');
   const device = document.querySelector('#device');
+  const deviceLogin = document.querySelector('#device-login');
   const list = document.querySelector('#device-list');
   const status = document.querySelector('#device-state');
   const form = document.querySelector('.task-form');
@@ -110,7 +111,8 @@ export async function startOffline() {
         newValue: values[kind] === ADD ? values[kind + '_new'] : '',
       }}));
     }
-    form.querySelector('button[type=submit]').textContent = context ? 'Guardar cambios' : 'Guardar tarea';
+    form.querySelector('[data-submit-label]').textContent = context ? 'Guardar cambios' : 'Guardar tarea';
+    document.querySelector('#device-form-title').textContent = context ? 'Editar tarea' : 'Nueva tarea';
     form.querySelector('.device-compare')?.remove();
     if (context?.remote) {
       const compare = element('div', '', 'device-compare conflict');
@@ -142,14 +144,16 @@ export async function startOffline() {
   }
 
   function render() {
-    const link = document.querySelector('[data-pending]');
-    if (link) {
-      link.hidden = !state.queue.length;
-      link.querySelector('[data-pending-count]').textContent = '(' + state.queue.length + ')';
+    const count = document.querySelector('[data-pending-count]');
+    if (count) {
+      count.hidden = !state.queue.length;
+      count.textContent = String(state.queue.length);
+      count.setAttribute('aria-label', state.queue.length + ' cambios pendientes');
     }
     if (!device) return;
     const unlocked = available(state);
     device.hidden = !unlocked;
+    deviceLogin.hidden = unlocked || !navigator.onLine;
     if (!unlocked) {
       closeForm();
       list.replaceChildren();
@@ -192,6 +196,12 @@ export async function startOffline() {
       list.append(section);
     }
     const saved = state.snapshot.tasks.filter(task => !pendingIds.has(task.id));
+    if (!saved.length && !state.queue.length) {
+      const empty = element('div', '', 'paper-card empty-state');
+      empty.append(element('h2', 'Aún no hay tareas en este dispositivo'),
+        element('p', 'Las tareas de los últimos 30 días se guardan aquí para trabajar sin conexión.'));
+      list.append(empty);
+    }
     if (saved.length) list.append(element('h2', 'Guardadas en el servidor', 'device-heading'));
     for (const task of saved) {
       const section = element('article', '', 'panel device-record');
@@ -202,7 +212,14 @@ export async function startOffline() {
   }
 
   async function snapshot() {
-    const response = await fetch('/api/offline', { cache: 'no-store' });
+    let response;
+    try {
+      response = await fetch('/api/offline', { cache: 'no-store' });
+    } catch (error) {
+      showConnection(false);
+      throw error;
+    }
+    showConnection(true);
     if (response.status === 401) {
       invalidSession = true;
       if (state.expires) await change(current => { current.expires = 0; });
@@ -331,7 +348,7 @@ export async function startOffline() {
         current.queue.push(entry);
       });
       if (!state.queue.some(item => item.operation === operation)) {
-        announce('Ya hay un cambio para esta tarea. Revísalo en Pendientes.', 'error-notice');
+        announce('Ya hay un cambio para esta tarea. Revísalo en Dispositivo.', 'error-notice');
         return;
       }
       // If a refresh already captured the old queue, run once more for this entry.
@@ -339,7 +356,7 @@ export async function startOffline() {
       const result = first.get(operation) || (await runSync()).get(operation);
       const awaiting = state.queue.find(item => item.operation === operation);
       if (result?.state || awaiting?.state === 'invalid' || awaiting?.state === 'conflict') {
-        announce('Revisa el cambio desde Pendientes.', 'error-notice');
+        announce('Revisa el cambio desde Dispositivo.', 'error-notice');
         closeForm();
         render();
         return;
@@ -396,6 +413,10 @@ export async function startOffline() {
   }
 
   document.querySelector('#device-new')?.addEventListener('click', showNew);
+  document.querySelector('#device-cancel')?.addEventListener('click', () => {
+    closeForm();
+    document.querySelector('#device-new').focus();
+  });
   document.querySelector('#sync-now')?.addEventListener('click', async () => {
     await runSync();
     announce(!navigator.onLine ? 'Sin conexión. Tus cambios se mantienen en este dispositivo.'
@@ -424,6 +445,7 @@ export async function startOffline() {
     runSync();
   });
   if (device) {
+    window.addEventListener('offline', render);
     setInterval(renderExpiry, 60_000);
     if (selectedPath.searchParams.has('guardada')) announce('Cambio guardado en este dispositivo. Pendiente de sincronizar.');
   }
