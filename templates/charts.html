@@ -11,7 +11,7 @@
     <div><h1>Gráficos</h1><p>Actividad de las tiendas en el período seleccionado.</p></div>
     <svg class="ico" aria-hidden="true"><use href="#i-chart"/></svg>
   </header>
-  <form class="paper-card chart-controls" id="chart-range">
+  <form class="paper-card filter-bar chart-controls" id="chart-range">
     <div class="field"><label for="chart-from">Desde</label><input id="chart-from" name="desde" type="date" value="{{ from }}" required></div>
     <div class="field"><label for="chart-through">Hasta</label><input id="chart-through" name="hasta" type="date" value="{{ through }}" required></div>
     {% let filter_id = "charts-user" %}{% include "account_filter.html" %}

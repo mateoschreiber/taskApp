@@ -1,6 +1,5 @@
 /* Journal, work records and entry forms share the same paper and red accents. */
-.paper-card,
-.store-picker {
+.paper-card {
   background: #fff;
   border: 1px solid var(--line);
   border-radius: 1.25rem;
@@ -115,7 +114,7 @@
   border-inline-start: 1px solid var(--line);
   padding-inline-start: clamp(.75rem, 4cqw, 3.1rem);
 }
-.metric-symbol, .filter-icon, .group-icon, .record-icon, .file-symbol, .export-mark, .empty-symbol {
+.metric-symbol, .group-icon, .record-icon, .file-symbol, .export-mark, .empty-symbol {
   display: inline-grid;
   place-items: center;
   flex: none;
@@ -129,8 +128,41 @@
 .cover-totals dt { grid-area: label; font-size: .82rem; line-height: 1.3; color: var(--muted); }
 .cover-totals > div:nth-child(2) .metric-symbol { background: #f1e9e3; color: #705147; }
 
-.journal-desk { display: grid; gap: 1.5rem; margin-top: 1.65rem; align-items: start; }
 .journal-activity { min-width: 0; }
+.journal-filters { margin-block: clamp(1rem, 2.2vw, 1.65rem); }
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: .75rem;
+  padding: clamp(.85rem, 2.3vw, 1.25rem);
+}
+.filter-bar .field { flex: 1 1 12rem; }
+.filter-bar > :is(.primary, .secondary) { min-height: 3.05rem; }
+.page-heading + .filter-bar { margin-bottom: 1rem; }
+
+.account-list { list-style: none; margin: 0; padding: 0; }
+.account-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: .8rem 1.25rem;
+  padding: clamp(.9rem, 2.5vw, 1.35rem);
+}
+.account-row + .account-row { border-top: 1px solid var(--line); }
+.account-identity { display: grid; gap: .15rem; min-width: 0; overflow-wrap: anywhere; }
+.account-identity span { color: var(--muted); }
+.account-actions { display: flex; flex-wrap: wrap; gap: .45rem; }
+.danger-text { color: var(--danger); }
+.settings-form {
+  display: grid;
+  gap: 1rem;
+  max-inline-size: 36rem;
+  padding: clamp(1rem, 3vw, 1.55rem);
+}
+.settings-form .notice { margin: 0; }
+.settings-form > p, .page-heading p { overflow-wrap: anywhere; }
 .section-heading, .page-heading, .header-actions {
   display: flex;
   align-items: center;
@@ -158,56 +190,6 @@
 .text-action:hover, .back-link:hover { text-decoration: underline; text-underline-offset: .2em; }
 .text-action .ico, .back-link .ico { width: 1rem; height: 1rem; }
 .back-link { margin-bottom: .65rem; }
-.store-picker { min-width: 0; }
-.store-picker summary {
-  display: flex;
-  align-items: center;
-  gap: .8rem;
-  min-height: 4.3rem;
-  padding: .9rem 1rem;
-  border-radius: inherit;
-  list-style: none;
-  cursor: pointer;
-}
-.store-picker summary::-webkit-details-marker { display: none; }
-.store-picker summary:hover { background: #fff8f6; }
-.store-filter-name { min-width: 0; display: grid; gap: .2rem; }
-.store-filter-name small { color: var(--muted); font-size: .75rem; }
-.store-filter-name strong { line-height: 1.2; font-size: 1rem; overflow-wrap: anywhere; }
-.filter-icon { width: 2.6rem; height: 2.6rem; background: #f7eee9; color: #8a2636; }
-.filter-caret { display: grid; flex: none; margin-inline-start: auto; color: var(--muted); transform: rotate(90deg); }
-.store-picker[open] .filter-caret { transform: rotate(-90deg); }
-.filter-caret .ico { width: 1.1rem; height: 1.1rem; }
-.store-options { padding: .5rem; border-top: 1px solid var(--line); }
-.store-options a {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: .75rem;
-  min-height: 2.85rem;
-  padding: .42rem .6rem;
-  border-radius: .6rem;
-  color: var(--ink);
-  text-decoration: none;
-  line-height: 1.35;
-  font-size: .86rem;
-  font-weight: 580;
-  overflow-wrap: anywhere;
-}
-.store-name { text-transform: capitalize; }
-.store-options a:hover { background: #faf5f2; }
-.store-options a[aria-current] { background: #fbe7e6; color: #92132d; font-weight: 750; }
-.store-total {
-  flex: none;
-  padding: .1rem .43rem;
-  min-width: 1.55rem;
-  text-align: center;
-  background: #f2eeeb;
-  border-radius: .37rem;
-  font-size: .78rem;
-  font-variant-numeric: tabular-nums;
-}
-.store-options a[aria-current] .store-total { background: #fff9f7; }
 .empty-state { display: grid; justify-items: center; align-content: center; text-align: center; padding: 2.05rem 1rem; }
 .empty-state h3, .empty-state h2 { margin: .4rem 0 0; font-size: 1.18rem; line-height: 1.3; letter-spacing: -.03em; }
 .empty-state p { margin: .5rem 0; color: var(--muted); font-size: .94rem; }
@@ -339,14 +321,12 @@
   .metric-symbol { width: 2rem; height: 2rem; border-radius: .6rem; }
   .metric-symbol .ico { width: 1rem; height: 1rem; }
 }
-@media (min-width: 72rem) {
-  .journal-desk { grid-template-columns: minmax(0, 1.8fr) minmax(13.5rem, 1fr); grid-template-areas: "activity filter"; gap: clamp(1.1rem, 2.5vw, 2rem); }
-  .journal-activity { grid-area: activity; }
-  .store-picker { grid-area: filter; }
-}
 @media (max-width: 39.99rem) {
   .page-heading { margin-bottom: 1.2rem; }
-  .journal-desk { gap: 1.15rem; margin-top: 1rem; }
+  .filter-bar { flex-direction: column; align-items: stretch; }
+  .filter-bar .field { flex: auto; }
+  .account-row { display: grid; }
+  .account-row .account-actions > a { justify-content: flex-start; }
   .record-link { gap: .3rem .65rem; }
   .record-icon { width: 2.2rem; height: 2.2rem; border-radius: .6rem; }
   .record-icon .ico { width: 1.08rem; height: 1.08rem; }

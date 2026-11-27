@@ -117,7 +117,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         return auth::print_password_hash();
     }
 
-    let auth = auth::Auth::from_env()?;
+    let recovery = env::args().nth(1).as_deref() == Some("reset-admin-password");
     let bind: SocketAddr = env::var("TASKAPP_BIND")
         .unwrap_or_else(|_| "127.0.0.1:8080".into())
         .parse()?;
@@ -130,6 +130,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
     )
     .await?;
     sqlx::migrate!().run(&db).await?;
+    if recovery {
+        return auth::reset_admin_password(&db).await;
+    }
+    let auth = auth::Auth::from_env()?;
+    auth::initialize_admin(&db, auth.production).await?;
 
     let table = if auth.production {
         "production_sessions"
@@ -168,9 +173,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .route("/api/offline", get(tasks::snapshot))
         .route("/api/tareas/sync", axum::routing::post(tasks::sync))
         .route("/usuarios", get(users::list).post(users::create))
+        .route("/usuarios/nuevo", get(users::new_page))
+        .route("/cuenta", get(users::profile).post(users::update_profile))
         .route(
             "/usuarios/{id}/{action}",
-            axum::routing::post(users::update),
+            get(users::edit_page).post(users::update),
         )
         .route(
             "/cuenta/contrasena",

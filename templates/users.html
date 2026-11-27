@@ -1,54 +1,24 @@
 {% extends "base.html" %}
-{% block title %}Usuarios · taskApp{% endblock %}
+{% block title %}Usuarios ? taskApp{% endblock %}
 {% block navigation %}{% let active = "usuarios" %}{% include "nav.html" %}{% endblock %}
 {% block content %}
-<header class="page-heading"><h1>Usuarios</h1></header>
-{% if !error.is_empty() %}<p class="notice error-notice" role="alert">{{ error }}</p>{% endif %}
-{% if !temporary.is_empty() %}
-<section class="notice success" aria-labelledby="temp-title">
-  <h2 id="temp-title">Contraseña temporal para {{ issued_for }}</h2>
-  <p><code id="temporary-password">{{ temporary }}</code></p>
-  <p>Compártela por privado. Vence en 24 horas y se muestra solo aquí.</p>
-</section>
-{% endif %}
-<form class="paper-card task-form" method="post" action="/usuarios">
-  <fieldset class="task-group"><legend>Nueva cuenta</legend>
-    <input type="hidden" name="csrf" value="{{ csrf }}">
-    <div class="form-grid">
-      <div class="field"><label for="new-username">Usuario</label><input id="new-username" name="username" value="{{ username }}" minlength="3" maxlength="32" autocapitalize="none" required></div>
-      <div class="field"><label for="new-name">Nombre visible</label><input id="new-name" name="name" value="{{ name }}" maxlength="80" required></div>
+<header class="page-heading">
+  <h1>Usuarios</h1>
+  <a class="primary" href="/usuarios/nuevo">Nueva cuenta</a>
+</header>
+{% if !notice.is_empty() %}<p class="notice success" role="status">{{ notice }}</p>{% endif %}
+<ul class="paper-card account-list">
+  {% for account in accounts %}
+  <li class="account-row">
+    <div class="account-identity"><strong>{{ account.username }}</strong>{% if account.id == 1 %}<span>Administrador</span>{% else if account.username != account.name %}<span>{{ account.name }}</span>{% endif %}</div>
+    {% if account.id != 1 %}
+    <div class="account-actions">
+      <a class="secondary" href="/usuarios/{{ account.id }}/editar" aria-label="Editar usuario {{ account.username }}">Editar usuario</a>
+      <a class="secondary" href="/usuarios/{{ account.id }}/restablecer" aria-label="Restablecer contraseña de {{ account.username }}">Restablecer contraseña</a>
+      <a class="quiet danger-text" href="/usuarios/{{ account.id }}/eliminar" aria-label="Eliminar cuenta de {{ account.username }}">Eliminar cuenta</a>
     </div>
-  </fieldset>
-  <div class="task-actions"><button type="submit" class="primary">Crear cuenta</button></div>
-</form>
-<section class="task-group" aria-labelledby="account-list"><h2 id="account-list">Cuentas</h2></section>
-{% for account in accounts %}
-<details class="paper-card task-group">
- <summary class="quiet">{{ account.name }} · {{ account.username }}</summary>
- {% if account.id == 1 %}
- <p class="task-group">Cuenta administradora. Sus credenciales se gestionan en el servidor.</p>
- {% else %}
- <form method="post" action="/usuarios/{{ account.id }}/editar" class="task-group">
-  <input type="hidden" name="csrf" value="{{ csrf }}">
-  <div class="form-grid">
-   <div class="field"><label for="username-{{ account.id }}">Usuario</label><input id="username-{{ account.id }}" name="username" value="{{ account.username }}" minlength="3" maxlength="32" required></div>
-   <div class="field"><label for="name-{{ account.id }}">Nombre visible</label><input id="name-{{ account.id }}" name="name" value="{{ account.name }}" maxlength="80" required></div>
-  </div>
-  <p class="header-actions"><button class="secondary" type="submit">Guardar cambios</button></p>
- </form>
- <form method="post" action="/usuarios/{{ account.id }}/restablecer" class="task-group">
-   <input type="hidden" name="csrf" value="{{ csrf }}">
-   <button type="submit" class="secondary">Restablecer contraseña</button>
- </form>
- <details class="task-group">
-   <summary class="quiet">Eliminar cuenta</summary>
-   <form method="post" action="/usuarios/{{ account.id }}/eliminar">
-     <input type="hidden" name="csrf" value="{{ csrf }}">
-     <div class="field"><label for="remove-{{ account.id }}">Escribe {{ account.username }} para eliminar la cuenta. Sus tareas se conservarán.</label><input id="remove-{{ account.id }}" name="username" required autocomplete="off"></div>
-     <button type="submit" class="primary">Eliminar definitivamente</button>
-   </form>
- </details>
- {% endif %}
-</details>
-{% endfor %}
+    {% endif %}
+  </li>
+  {% endfor %}
+</ul>
 {% endblock %}

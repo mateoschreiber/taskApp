@@ -4,14 +4,21 @@
   <a href="/historial" {% if active == "history" %}aria-current="page"{% else if active == "edit" || active == "export" %}aria-current="location"{% endif %}><svg class="ico" aria-hidden="true"><use href="#i-history"/></svg>Historial</a>
   <a href="/graficos" {% if active == "charts" %}aria-current="page"{% endif %}><svg class="ico" aria-hidden="true"><use href="#i-chart"/></svg>Gráficos</a>
   <a href="/sin-conexion" data-pending {% if active == "device" %}aria-current="page"{% endif %}><svg class="ico" aria-hidden="true"><use href="#i-device"/></svg>Dispositivo <span class="queue-count" data-pending-count hidden></span></a>
+  {% if account_id == 1 %}<a class="desktop-users" href="/usuarios" {% if active == "usuarios" %}aria-current="page"{% endif %}><svg class="ico" aria-hidden="true"><use href="#i-users"/></svg>Usuarios</a>{% endif %}
 </nav>
 <div class="session-tools" data-account-id="{{ account_id }}">
-  {% if account_id == 1 %}<a class="quiet" href="/usuarios" {% if active == "usuarios" %}aria-current="page"{% endif %}>Usuarios</a>{% endif %}
   <span class="connection" data-connection role="status" hidden><span class="signal" aria-hidden="true"></span><span data-connection-label></span></span>
   {% if !csrf.is_empty() %}
-  <form action="/salir" method="post" class="signout">
-    <input type="hidden" name="csrf" value="{{ csrf }}">
-    <button class="logout" type="submit" aria-label="Cerrar sesión" title="Cerrar sesión"><svg class="ico" aria-hidden="true"><use href="#i-exit"/></svg><span>Cerrar sesión</span></button>
-  </form>
+  <details class="account-menu">
+    <summary>Cuenta</summary>
+    <div class="account-menu-links">
+      <a class="quiet" href="/cuenta" {% if active == "profile" %}aria-current="page"{% endif %}>Mi cuenta</a>
+      {% if account_id == 1 %}<a class="quiet mobile-users" href="/usuarios" {% if active == "usuarios" %}aria-current="page"{% endif %}>Usuarios</a>{% endif %}
+      <form action="/salir" method="post" class="signout">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button class="quiet" type="submit" aria-label="Cerrar sesión" title="Cerrar sesión"><svg class="ico" aria-hidden="true"><use href="#i-exit"/></svg><span>Cerrar sesión</span></button>
+      </form>
+    </div>
+  </details>
   {% endif %}
 </div>

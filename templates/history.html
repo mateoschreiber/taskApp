@@ -6,7 +6,7 @@
   <div><h1>Historial</h1><p>Todos tus trabajos, del más reciente al más antiguo.</p></div>
   <div class="header-actions"><a class="secondary" href="/exportar?usuario={{ selected_account }}" data-open-export><svg class="ico" aria-hidden="true"><use href="#i-download"></use></svg> Exportar</a><a class="primary" href="/tareas/nueva"><svg class="ico" aria-hidden="true"><use href="#i-plus"></use></svg> Nueva tarea</a></div>
 </header>
-{% if account_id == 1 %}<form method="get" class="header-actions">{% let filter_id = "history-user" %}{% include "account_filter.html" %}<button class="secondary" type="submit">Filtrar</button></form>{% endif %}
+{% if account_id == 1 %}<form method="get" class="paper-card filter-bar">{% let filter_id = "history-user" %}{% include "account_filter.html" %}<button class="secondary" type="submit">Filtrar</button></form>{% endif %}
 <dialog id="export-dialog" class="export-dialog" aria-labelledby="export-title">
   <div class="export-head">
     <span class="export-mark"><svg class="ico" aria-hidden="true"><use href="#i-download"></use></svg></span>

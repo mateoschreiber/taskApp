@@ -16,22 +16,19 @@
     <div><span class="metric-symbol"><svg class="ico" aria-hidden="true"><use href="#i-store"></use></svg></span><dl><dt>Tiendas con actividad</dt><dd>{{ active_stores }}</dd></dl></div>
   </div>
 </section>
-{% if account_id == 1 %}
-<form method="get" class="header-actions task-group">
+<form action="/" method="get" class="paper-card filter-bar journal-filters">
   {% let filter_id = "today-user" %}{% include "account_filter.html" %}
+  <div class="field">
+    <label for="today-store">Tienda</label>
+    <select id="today-store" name="tienda">
+      <option value="">Todas las tiendas ({{ total }})</option>
+      {% for store in stores %}
+      <option value="{{ store.label }}" {% if selected == store.label %}selected{% endif %}>{{ store.label }} ({{ store.count }})</option>
+      {% endfor %}
+    </select>
+  </div>
   <button class="secondary" type="submit">Filtrar</button>
 </form>
-{% endif %}
-<div class="journal-desk">
-  <details class="store-picker">
-    <summary><span class="filter-icon"><svg class="ico" aria-hidden="true"><use href="#i-store"></use></svg></span><span class="store-filter-name"><small>Filtrar por tienda</small><strong>{% if selected.is_empty() %}Todas las tiendas{% else %}{{ selected }}{% endif %}</strong></span><span class="filter-caret"><svg class="ico" aria-hidden="true"><use href="#i-chevron-right"></use></svg></span></summary>
-    <nav class="store-options" aria-label="Filtrar las tareas por tienda">
-      <a href="{{ all_stores_url }}" {% if selected.is_empty() %}aria-current="true"{% endif %}><span>Todas las tiendas</span><span class="store-total" aria-label="{{ total }} tareas">{{ total }}</span></a>
-      {% for store in stores %}
-        <a href="{{ store.url }}" {% if selected.as_str() == store.label.as_str() %}aria-current="true"{% endif %}><span class="store-name">{{ store.label.to_lowercase() }}</span><span class="store-total" aria-label="{{ store.count }} tareas">{{ store.count }}</span></a>
-      {% endfor %}
-    </nav>
-  </details>
   <section class="journal-activity" aria-labelledby="activity-title">
     <div class="section-heading">
       <h2 id="activity-title">Actividad de hoy</h2>
@@ -47,5 +44,4 @@
       <ul class="paper-card work-records">{% for task in tasks %}{% include "record.html" %}{% endfor %}</ul>
     {% endif %}
   </section>
-</div>
 {% endblock %}

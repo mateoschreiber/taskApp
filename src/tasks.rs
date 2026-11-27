@@ -601,7 +601,6 @@ pub(crate) async fn snapshot(
 struct Today {
     accounts: Vec<crate::users::Account>,
     selected_account: String,
-    all_stores_url: String,
     account_id: i64,
     csrf: String,
     date: String,
@@ -615,7 +614,6 @@ struct Today {
 
 struct StoreCard {
     label: String,
-    url: String,
     count: usize,
 }
 
@@ -659,18 +657,10 @@ pub(crate) async fn home(
     } else {
         String::new()
     };
-    let all_stores_url = owner
-        .filter(|_| user.admin())
-        .map_or_else(|| "/".to_owned(), |id| format!("/?usuario={id}"));
     let stores: Vec<_> = labels
         .into_iter()
         .map(|label| StoreCard {
-            count: counts.get(label.as_str()).copied().unwrap_or(0),
-            url: format!(
-                "{all_stores_url}{}tienda={}",
-                if all_stores_url == "/" { "?" } else { "&" },
-                urlencoding::encode(&label)
-            ),
+            count: counts.get(label.as_str()).copied().unwrap_or_default(),
             label,
         })
         .collect();
@@ -692,7 +682,6 @@ pub(crate) async fn home(
         account_id: user.id,
         accounts: crate::users::accounts(&app.db, user.admin()).await?,
         selected_account,
-        all_stores_url,
         csrf: auth::csrf(&session).await?,
         date: format!(
             "{}, {} de {}",

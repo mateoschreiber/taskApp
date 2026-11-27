@@ -62,13 +62,32 @@ img { max-inline-size: 100%; }
 .nav a { position: relative; display: flex; flex-direction: column; gap: .15rem; align-items: center; justify-content: center; padding: .35rem .15rem; min-height: 3.05rem; border-radius: .68rem; font-size: .725rem; font-weight: 650; line-height: 1.2; text-decoration: none; color: var(--muted); }
 .nav a[aria-current] { color: var(--action); background: var(--blush); }
 .nav a[aria-current] .ico { stroke-width: 2; }
+.nav .desktop-users { display: none; }
 .queue-count { position: absolute; left: calc(50% + .15rem); top: -.05rem; min-width: 1rem; padding: 0 .2rem; background: var(--action); color: white; border-radius: 1rem; text-align: center; font: 700 .65rem/1rem system-ui; }
 .session-tools { display: flex; align-items: center; gap: .35rem; }
+.account-menu { position: relative; }
+.account-menu summary { cursor: pointer; align-content: center; min-height: 2.75rem; padding-inline: .45rem; font-weight: 700; }
+.account-menu-links {
+  position: absolute;
+  z-index: 9;
+  inset: calc(100% + .3rem) 0 auto auto;
+  display: grid;
+  gap: .2rem;
+  min-inline-size: max-content;
+  padding: .35rem;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: .8rem;
+  box-shadow: 0 6px 18px #4d15101c;
+}
+.account-menu-links .quiet { width: 100%; justify-content: flex-start; }
+.account-menu-links [aria-current] { background: var(--blush); color: var(--action); }
+@media (max-width: 25rem) {
+  .connection [data-connection-label] { position: absolute; clip-path: inset(50%); }
+}
 .connection { display: inline-flex; align-items: center; gap: .45rem; border: 1px solid var(--line); background: var(--paper); padding: .32rem .65rem; border-radius: 2rem; color: var(--muted); font: 600 .76rem/1.3 system-ui, sans-serif; }
 .signal { width: .42rem; height: .42rem; border-radius: 50%; background: #237351; }
 .connection.is-offline .signal { background: #9c5b0c; }
-.logout { display: inline-flex; align-items: center; justify-content: center; gap: .65rem; width: 2.75rem; min-height: 2.75rem; border: 0; border-radius: .6rem; background: transparent; color: var(--muted); }
-.logout span { display: none; }
 main { min-width: 0; }
 .workspace main { padding: 1.3rem max(1.05rem, env(safe-area-inset-right)) calc(6.2rem + env(safe-area-inset-bottom)) max(1.05rem, env(safe-area-inset-left)); }
 .primary, .secondary, .quiet, .back { display: inline-flex; align-items: center; justify-content: center; gap: .5rem; min-height: 2.85rem; padding: .55rem 1rem; border: 1px solid transparent; border-radius: .7rem; font: 700 .94rem/1.25 var(--display); text-decoration: none; cursor: pointer; }
@@ -96,7 +115,7 @@ textarea { resize: vertical; }
 .suggestions li { display: flex; align-items: center; min-height: 2.75rem; padding: .55rem .7rem; border-radius: .4rem; cursor: pointer; font-size: .94rem; overflow-wrap: anywhere; }
 .suggestions [aria-selected="true"] { background: var(--blush); color: var(--wine); }
 @media (hover:hover) {
-  .nav a:hover, .quiet:hover, .logout:hover, .suggestions li:hover { background: #f7efec; color: var(--wine); }
+  .nav a:hover, .quiet:hover, .suggestions li:hover { background: #f7efec; color: var(--wine); }
   .primary:hover { background: #a5102b; }
   .secondary:hover { border-color: #baa1a2; background: #fff8f4; }
 }
@@ -133,9 +152,10 @@ textarea { resize: vertical; }
   .nav { position: static; display: flex; flex-direction: column; gap: .3rem; margin-top: 2.6rem; padding: 0; border: 0; box-shadow: none; }
   .nav a { flex-direction: row; justify-content: flex-start; gap: .8rem; padding: .7rem .8rem; min-height: 2.85rem; font-size: .94rem; }
   .queue-count { position: static; margin-inline-start: auto; }
+  .account-menu-links { inset: auto auto calc(100% + .3rem) 0; }
+  .nav .desktop-users { display: flex; }
+  .account-menu-links .mobile-users { display: none; }
   .session-tools { flex-direction: column; align-items: flex-start; gap: .75rem; padding: 1.1rem .45rem 0; border-top: 1px solid var(--line); margin-top: auto; }
-  .logout { width: auto; padding: .5rem .3rem; font-weight: 600; font-size: .85rem; }
-  .logout span { display: inline; }
   .workspace main { width: 100%; max-width: 84rem; margin-inline: auto; padding: clamp(1.8rem, 3vw, 3.3rem) clamp(1.65rem, 3.7vw, 4.4rem) 4rem; }
 }
 @media (min-width: 40rem) and (max-width: 60.99rem) {
@@ -143,5 +163,5 @@ textarea { resize: vertical; }
   .workspace main { padding-inline: 2rem; padding-top: 1.7rem; }
 }
 @media (prefers-reduced-motion: no-preference) {
-  .primary, .secondary, .quiet, .logout, .nav a { transition: background-color .14s, color .14s, border-color .14s; }
+  .primary, .secondary, .quiet, .nav a { transition: background-color .14s, color .14s, border-color .14s; }
 }

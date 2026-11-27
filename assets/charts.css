@@ -11,23 +11,12 @@
 
 .chart-banner p { margin-top: .5rem; }
 .chart-banner .ico { width: 3rem; height: 3rem; }
-.chart-controls {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  align-items: end;
-  gap: .65rem;
-  padding: 1rem;
-  margin-top: 1rem;
-}
-.chart-controls input { min-width: 0; }
-.chart-controls .primary { grid-column: 1; grid-row: 2; }
-#chart-pdf { grid-column: 2; grid-row: 2; padding-inline: .55rem; }
+.chart-controls { margin-top: 1rem; }
 .chart-presets {
   display: flex;
   flex-wrap: wrap;
   gap: .4rem;
-  grid-column: 1 / -1;
-  grid-row: 3;
+  flex-basis: 100%;
 }
 .chart-presets button { border-color: var(--line); }
 .chart-message { min-height: 1.5rem; margin: 1rem 0; color: var(--muted); }
@@ -84,10 +73,6 @@
 .chart-detail li a { min-height: 44px; display: flex; align-items: center; }
 .chart-detail li span { color: var(--muted); font-size: .9rem; }
 @media (min-width: 45rem) {
-  .chart-controls { grid-template-columns: repeat(2, minmax(0, 1fr)) auto auto; }
-  .chart-controls .primary { grid-column: 3; grid-row: 1; }
-  #chart-pdf { grid-column: 4; grid-row: 1; padding-inline: 1rem; }
-  .chart-presets { grid-row: 2; }
   .chart-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem 1rem; }
   .chart-timeline { grid-column: 1 / -1; }
 }

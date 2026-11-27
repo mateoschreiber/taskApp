@@ -53,15 +53,92 @@ fn verifies(hash: &str, password: &str) -> bool {
     })
 }
 
-pub(crate) fn print_password_hash() -> Result<(), Box<dyn Error>> {
+pub(crate) fn valid_password(password: &str) -> bool {
+    password.chars().count() >= 15 && password.len() <= 256
+}
+
+fn prompt_new_password() -> Result<String, Box<dyn Error>> {
     let password = rpassword::prompt_password("Contraseña nueva: ")?;
-    if password.chars().count() < 15 || password.len() > 256 {
+    if !valid_password(&password) {
         return Err("Usa al menos 15 caracteres y un máximo de 256 bytes.".into());
     }
     if password != rpassword::prompt_password("Repite la contraseña: ")? {
         return Err("Las contraseñas no coinciden.".into());
     }
-    println!("{}", hash_password(&password));
+    Ok(password)
+}
+
+pub(crate) fn print_password_hash() -> Result<(), Box<dyn Error>> {
+    println!("{}", hash_password(&prompt_new_password()?));
+    Ok(())
+}
+
+fn production_bootstrap_hash() -> Result<String, Box<dyn Error>> {
+    let hash = fs::read_to_string(env::var("TASKAPP_PASSWORD_HASH_FILE")?)?;
+    let hash = hash.trim().to_owned();
+    let valid = PasswordHash::new(&hash).is_ok_and(|parsed| {
+        parsed.algorithm.as_str() == "argon2id"
+            && parsed.version == Some(19)
+            && parsed.salt.is_some()
+            && parsed.hash.is_some()
+            && parsed
+                .params
+                .get_decimal("m")
+                .is_some_and(|m| (19456..=262144).contains(&m))
+            && parsed
+                .params
+                .get_decimal("t")
+                .is_some_and(|t| (2..=10).contains(&t))
+            && parsed
+                .params
+                .get_decimal("p")
+                .is_some_and(|p| (1..=4).contains(&p))
+    });
+    if !valid || verifies(&hash, "admin") {
+        return Err("Producción requiere un hash Argon2id válido con una contraseña distinta a la de prueba".into());
+    }
+    Ok(hash)
+}
+
+pub(crate) async fn initialize_admin(
+    db: &sqlx::SqlitePool,
+    production: bool,
+) -> Result<(), Box<dyn Error>> {
+    let existing: Option<String> =
+        sqlx::query_scalar("SELECT password_hash FROM admin_credentials WHERE id = 1")
+            .fetch_optional(db)
+            .await?;
+    if let Some(hash) = existing {
+        if production && verifies(&hash, "admin") {
+            return Err(
+                "Cambia la contraseña de pruebas antes de usar este volumen en producción.".into(),
+            );
+        }
+        return Ok(());
+    }
+    let hash = if production {
+        production_bootstrap_hash()?
+    } else {
+        hash_password("admin")
+    };
+    sqlx::query("INSERT INTO admin_credentials (id, password_hash) VALUES (1, ?) ON CONFLICT(id) DO NOTHING")
+        .bind(hash).execute(db).await?;
+    Ok(())
+}
+
+pub(crate) async fn reset_admin_password(db: &sqlx::SqlitePool) -> Result<(), Box<dyn Error>> {
+    let hash = hash_password(&prompt_new_password()?);
+    let mut tx = db.begin_with("BEGIN IMMEDIATE").await?;
+    sqlx::query("INSERT INTO admin_credentials (id, password_hash) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET password_hash = excluded.password_hash")
+        .bind(hash).execute(&mut *tx).await?;
+    sqlx::query("UPDATE users SET version = version + 1 WHERE id = 1")
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("INSERT INTO user_events (actor_id, user_id, action) VALUES (1, 1, 'recuperar')")
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    println!("Contraseña de administrador actualizada.");
     Ok(())
 }
 
@@ -73,7 +150,7 @@ impl Auth {
             _ => return Err("TASKAPP_MODE debe ser local o production".into()),
         };
 
-        let (origin, hash) = if production {
+        let origin = if production {
             let origin = env::var("TASKAPP_ORIGIN")?;
             let uri: Uri = origin.parse()?;
             if uri.scheme_str() != Some("https")
@@ -87,38 +164,15 @@ impl Auth {
             {
                 return Err("TASKAPP_ORIGIN debe ser un origen HTTPS sin barra final".into());
             }
-            let hash = fs::read_to_string(env::var("TASKAPP_PASSWORD_HASH_FILE")?)?;
-            let hash = hash.trim().to_owned();
-            let valid = PasswordHash::new(&hash).is_ok_and(|parsed| {
-                parsed.algorithm.as_str() == "argon2id"
-                    && parsed.version == Some(19)
-                    && parsed.salt.is_some()
-                    && parsed.hash.is_some()
-                    && parsed
-                        .params
-                        .get_decimal("m")
-                        .is_some_and(|m| (19456..=262144).contains(&m))
-                    && parsed
-                        .params
-                        .get_decimal("t")
-                        .is_some_and(|t| (2..=10).contains(&t))
-                    && parsed
-                        .params
-                        .get_decimal("p")
-                        .is_some_and(|p| (1..=4).contains(&p))
-            });
-            if !valid || verifies(&hash, "admin") {
-                return Err("Producción requiere un hash Argon2id válido con una contraseña distinta a la de prueba".into());
-            }
-            (origin, hash)
+            origin
         } else {
-            (String::new(), hash_password("admin"))
+            String::new()
         };
 
         Ok(Self {
             production,
             origin,
-            hash: hash.into(),
+            hash: hash_password(&Uuid::new_v4().to_string()).into(),
             epoch: Uuid::new_v4(),
             attempts: Default::default(),
         })
@@ -361,28 +415,36 @@ pub(crate) async fn logout(
 #[template(path = "password.html")]
 struct PasswordPage {
     csrf: String,
+    temporary: bool,
     error: &'static str,
 }
 
 #[derive(Deserialize)]
 pub(crate) struct PasswordChange {
     csrf: String,
+    #[serde(default)]
+    current: String,
     password: String,
     repeat: String,
+}
+
+async fn password_user(app: &App, session: &Session) -> Result<Option<User>, AppError> {
+    Ok(session_user(app, session).await?.filter(|user| {
+        user.temporary_until
+            .is_none_or(|expiry| expiry > chrono::Utc::now().timestamp())
+    }))
 }
 
 pub(crate) async fn password_page(
     State(app): State<App>,
     session: Session,
 ) -> Result<Response, AppError> {
-    if !session_user(&app, &session).await?.is_some_and(|user| {
-        user.temporary_until
-            .is_some_and(|expiry| expiry > chrono::Utc::now().timestamp())
-    }) {
+    let Some(user) = password_user(&app, &session).await? else {
         return Ok(Redirect::to("/login").into_response());
-    }
+    };
     page(PasswordPage {
         csrf: csrf(&session).await?,
+        temporary: user.temporary_until.is_some(),
         error: "",
     })
 }
@@ -393,51 +455,88 @@ pub(crate) async fn change_password(
     headers: HeaderMap,
     Form(form): Form<PasswordChange>,
 ) -> Result<Response, AppError> {
-    let Some(user) = session_user(&app, &session).await?.filter(|user| {
-        user.temporary_until
-            .is_some_and(|expiry| expiry > chrono::Utc::now().timestamp())
-    }) else {
+    let Some(user) = password_user(&app, &session).await? else {
         return Ok(Redirect::to("/login").into_response());
     };
     if !valid_post(&app.auth, &headers, &session, &form.csrf).await? {
         return Ok(forbidden());
     }
-    if form.password.chars().count() < 15
-        || form.password.len() > 256
-        || form.password != form.repeat
-    {
+    let temporary = user.temporary_until.is_some();
+    let invalid = |error| {
         let mut response = page(PasswordPage {
-            csrf: form.csrf,
-            error: "Usa al menos 15 caracteres y un m?ximo de 256 bytes. Las dos contrase?as deben coincidir.",
+            csrf: form.csrf.clone(),
+            temporary,
+            error,
         })?;
         *response.status_mut() = StatusCode::UNPROCESSABLE_ENTITY;
-        return Ok(response);
+        Ok(response)
+    };
+    if !valid_password(&form.password) || form.password != form.repeat {
+        return invalid(
+            "Usa al menos 15 caracteres y un máximo de 256 bytes. Las contraseñas deben coincidir.",
+        );
     }
-    let temporary_hash = user
-        .password_hash
-        .clone()
-        .expect("temporary account has a hash");
+    let Some(current_hash) = user.password_hash.clone() else {
+        return Ok(forbidden());
+    };
     let Ok(permit) = PASSWORD_CHECKS.try_acquire() else {
         return Ok(StatusCode::SERVICE_UNAVAILABLE.into_response());
     };
     let hash = tokio::task::spawn_blocking(move || {
         let _permit = permit;
-        (!verifies(&temporary_hash, &form.password)).then(|| hash_password(&form.password))
+        if !temporary && (form.current.len() > 256 || !verifies(&current_hash, &form.current)) {
+            return Err("La contraseña actual es incorrecta.");
+        }
+        if verifies(&current_hash, &form.password) {
+            return Err("Elige una contraseña distinta de la anterior.");
+        }
+        Ok(hash_password(&form.password))
     })
     .await?;
-    let Some(hash) = hash else {
-        let mut response = page(PasswordPage {
-            csrf: form.csrf,
-            error: "Elige una contrase?a distinta de la temporal.",
-        })?;
-        *response.status_mut() = StatusCode::UNPROCESSABLE_ENTITY;
-        return Ok(response);
+    let hash = match hash {
+        Ok(hash) => hash,
+        Err(error) => return invalid(error),
     };
-    let updated: Option<User> = sqlx::query_as("UPDATE users SET password_hash = ?, temporary_until = NULL, version = version + 1 WHERE id = ? AND version = ? AND temporary_until > ? RETURNING *")
-        .bind(hash).bind(user.id).bind(user.version).bind(chrono::Utc::now().timestamp()).fetch_optional(&app.db).await?;
-    let Some(updated) = updated else {
+    let mut tx = app.db.begin_with("BEGIN IMMEDIATE").await?;
+    let changed = sqlx::query(
+        "UPDATE users SET password_hash = CASE WHEN id = 1 THEN NULL ELSE ? END,
+         temporary_until = NULL, version = version + 1
+         WHERE id = ? AND version = ? AND (temporary_until IS NULL OR temporary_until > ?)",
+    )
+    .bind(&hash)
+    .bind(user.id)
+    .bind(user.version)
+    .bind(chrono::Utc::now().timestamp())
+    .execute(&mut *tx)
+    .await?
+    .rows_affected();
+    if changed == 0 {
         return Ok(Redirect::to("/login").into_response());
+    }
+    if user.admin() {
+        sqlx::query("UPDATE admin_credentials SET password_hash = ? WHERE id = 1")
+            .bind(hash)
+            .execute(&mut *tx)
+            .await?;
+    }
+    sqlx::query(
+        "INSERT INTO user_events (actor_id, user_id, action) VALUES (?, ?, 'cambiar_contrasena')",
+    )
+    .bind(user.id)
+    .bind(user.id)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    let updated = User {
+        version: user.version + 1,
+        temporary_until: None,
+        ..user
     };
     start_session(&app, &session, &updated).await?;
-    Ok(Redirect::to("/").into_response())
+    if !temporary {
+        session
+            .insert("profile_notice", "Contraseña actualizada.")
+            .await?;
+    }
+    Ok(Redirect::to(if temporary { "/" } else { "/cuenta" }).into_response())
 }

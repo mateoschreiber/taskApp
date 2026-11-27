@@ -67,7 +67,7 @@ Si vence la sesión, vuelve a entrar con conexión para recuperar los cambios pe
 
 ## Usuarios
 
-La cuenta **admin** gestiona el acceso desde **Usuarios**. Cada persona trabaja con sus propias tareas y sugerencias. Admin puede consultar y exportar el conjunto. Consulta la [gu?a de usuarios, permisos y migraci?n](docs/usuarios.md).
+La cuenta **admin** gestiona el acceso desde **Cuenta → Usuarios**. Cada persona trabaja con sus propias tareas y sugerencias. Admin puede consultar y exportar el conjunto. Consulta la [guía de usuarios, permisos y migración](docs/usuarios.md).
 
 ## Despliegue en servidor
 
@@ -92,3 +92,5 @@ El servidor usa **Rust, Axum y Askama**. SQLite conserva las tareas y sus revisi
 cargo fmt --check
 cargo clippy --locked --all-targets -- -D warnings
 ```
+
+Para verificar los flujos de cuentas con una base temporal, compila con `cargo build --locked` y ejecuta `python tests/accounts_http.py target/debug/taskapp` (usa `.exe` en Windows).

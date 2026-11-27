@@ -1,6 +1,6 @@
 # Usuarios, permisos y recuperación
 
-Entra como **admin** y abre **Usuarios**. Puedes crear una cuenta, editar su nombre visible y su usuario, restablecer su contraseña o eliminarla. El restablecimiento y la creación muestran una contraseña temporal una sola vez. Envíala por privado. Vence en 24 horas y el primer acceso pide elegir una contraseña de al menos 15 caracteres. Si la temporal se pierde o vence, genera otra. La cuenta admin usa las credenciales configuradas en el despliegue.
+Abre **Cuenta → Usuarios** como administrador. Puedes crear cuentas, editar el usuario de acceso, elegir una contraseña temporal nueva o eliminar una cuenta. La contraseña temporal vence en 24 horas y debe cambiarse en el primer acceso. Compártela por privado. En **Cuenta → Mi cuenta**, cada persona puede editar su nombre visible y cambiar su contraseña, incluido el administrador.
 
 | Operación | Admin | Cuenta normal |
 | --- | --- | --- |

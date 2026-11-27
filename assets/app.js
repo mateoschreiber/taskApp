@@ -135,13 +135,6 @@ for (const field of document.querySelectorAll('[data-choice]')) {
   });
 }
 
-const stores = document.querySelector('.store-picker');
-if (stores) {
-  const desktop = matchMedia('(min-width: 72rem)');
-  stores.open = desktop.matches;
-  desktop.addEventListener('change', event => { stores.open = event.matches; });
-}
-
 const dialog = document.querySelector('#export-dialog');
 document.querySelector('[data-open-export]')?.addEventListener('click', event => {
   if (typeof dialog?.showModal === 'function' && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {

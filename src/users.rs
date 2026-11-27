@@ -9,7 +9,6 @@ use chrono::Utc;
 use serde::Deserialize;
 use sqlx::{FromRow, SqlitePool};
 use tower_sessions::Session;
-use uuid::Uuid;
 
 use crate::{App, AppError, auth, page};
 
@@ -18,6 +17,7 @@ pub(crate) const ADMIN: i64 = 1;
 #[derive(Clone, FromRow)]
 pub(crate) struct User {
     pub id: i64,
+    pub name: String,
     pub password_hash: Option<String>,
     pub version: i64,
     pub temporary_until: Option<i64>,
@@ -40,14 +40,14 @@ impl User {
 }
 
 pub(crate) async fn by_username(db: &SqlitePool, username: &str) -> Result<Option<User>, AppError> {
-    Ok(sqlx::query_as("SELECT * FROM users WHERE username = ?")
+    Ok(sqlx::query_as("SELECT users.id, users.name, COALESCE(admin_credentials.password_hash, users.password_hash) AS password_hash, users.version, users.temporary_until FROM users LEFT JOIN admin_credentials USING (id) WHERE users.username = ?")
         .bind(username)
         .fetch_optional(db)
         .await?)
 }
 
 pub(crate) async fn by_id(db: &SqlitePool, id: i64) -> Result<Option<User>, AppError> {
-    Ok(sqlx::query_as("SELECT * FROM users WHERE id = ?")
+    Ok(sqlx::query_as("SELECT users.id, users.name, COALESCE(admin_credentials.password_hash, users.password_hash) AS password_hash, users.version, users.temporary_until FROM users LEFT JOIN admin_credentials USING (id) WHERE users.id = ?")
         .bind(id)
         .fetch_optional(db)
         .await?)
@@ -65,7 +65,7 @@ pub(crate) async fn accounts(db: &SqlitePool, admin: bool) -> Result<Vec<Account
         return Ok(Vec::new());
     }
     Ok(
-        sqlx::query_as("SELECT id, username, name FROM users ORDER BY id")
+        sqlx::query_as("SELECT id, username, COALESCE(NULLIF(name, ''), username) AS name FROM users ORDER BY username")
             .fetch_all(db)
             .await?,
     )
@@ -77,34 +77,20 @@ struct UsersPage {
     account_id: i64,
     csrf: String,
     accounts: Vec<Account>,
-    temporary: String,
-    issued_for: String,
-    username: String,
-    name: String,
-    error: &'static str,
+    notice: String,
 }
 
-async fn render(
-    app: &App,
-    session: &Session,
-    form: Change,
-    temporary: String,
+#[derive(Template)]
+#[template(path = "user_form.html")]
+struct UserForm {
+    account_id: i64,
+    csrf: String,
+    action: String,
+    action_url: String,
+    title: &'static str,
+    username: String,
+    target: String,
     error: &'static str,
-) -> Result<Response, AppError> {
-    let mut response = page(UsersPage {
-        account_id: ADMIN,
-        csrf: auth::csrf(session).await?,
-        accounts: accounts(&app.db, true).await?,
-        temporary,
-        issued_for: form.username.clone(),
-        username: form.username,
-        name: form.name,
-        error,
-    })?;
-    if !error.is_empty() {
-        *response.status_mut() = StatusCode::UNPROCESSABLE_ENTITY;
-    }
-    Ok(response)
 }
 
 fn denied(user: Option<&User>) -> Option<Response> {
@@ -119,7 +105,15 @@ pub(crate) async fn list(State(app): State<App>, session: Session) -> Result<Res
     if let Some(response) = denied(auth::current(&app, &session).await?.as_ref()) {
         return Ok(response);
     }
-    render(&app, &session, Change::default(), String::new(), "").await
+    page(UsersPage {
+        account_id: ADMIN,
+        csrf: auth::csrf(&session).await?,
+        accounts: accounts(&app.db, true).await?,
+        notice: session
+            .remove::<String>("users_notice")
+            .await?
+            .unwrap_or_default(),
+    })
 }
 
 #[derive(Default, Deserialize)]
@@ -129,7 +123,94 @@ pub(crate) struct Change {
     #[serde(default)]
     username: String,
     #[serde(default)]
-    name: String,
+    password: String,
+    #[serde(default)]
+    repeat: String,
+}
+
+pub(crate) async fn new_page(
+    State(app): State<App>,
+    session: Session,
+) -> Result<Response, AppError> {
+    action_page(app, session, None, "crear").await
+}
+
+pub(crate) async fn edit_page(
+    State(app): State<App>,
+    session: Session,
+    Path((id, action)): Path<(i64, String)>,
+) -> Result<Response, AppError> {
+    action_page(app, session, Some(id), &action).await
+}
+
+async fn action_page(
+    app: App,
+    session: Session,
+    id: Option<i64>,
+    action: &str,
+) -> Result<Response, AppError> {
+    if let Some(response) = denied(auth::current(&app, &session).await?.as_ref()) {
+        return Ok(response);
+    }
+    match form_page(&app, &session, id, action).await? {
+        Ok(form) => page(form),
+        Err(status) => Ok(status.into_response()),
+    }
+}
+
+async fn form_page(
+    app: &App,
+    session: &Session,
+    id: Option<i64>,
+    action: &str,
+) -> Result<Result<UserForm, StatusCode>, AppError> {
+    if id == Some(ADMIN) {
+        return Ok(Err(StatusCode::FORBIDDEN));
+    }
+    let title = match (id, action) {
+        (None, "crear") => "Nueva cuenta",
+        (Some(_), "editar") => "Editar usuario",
+        (Some(_), "restablecer") => "Restablecer contraseña",
+        (Some(_), "eliminar") => "Eliminar cuenta",
+        _ => return Ok(Err(StatusCode::NOT_FOUND)),
+    };
+    let target: String = if let Some(id) = id {
+        let username = sqlx::query_scalar("SELECT username FROM users WHERE id = ?")
+            .bind(id)
+            .fetch_optional(&app.db)
+            .await?;
+        let Some(username) = username else {
+            return Ok(Err(StatusCode::NOT_FOUND));
+        };
+        username
+    } else {
+        String::new()
+    };
+    Ok(Ok(UserForm {
+        account_id: ADMIN,
+        csrf: auth::csrf(session).await?,
+        action: action.to_owned(),
+        action_url: id.map_or_else(
+            || "/usuarios".to_owned(),
+            |id| format!("/usuarios/{id}/{action}"),
+        ),
+        title,
+        username: if action == "editar" {
+            target.clone()
+        } else {
+            String::new()
+        },
+        target,
+        error: "",
+    }))
+}
+
+fn invalid(mut view: UserForm, form: Change, error: &'static str) -> Result<Response, AppError> {
+    view.username = form.username;
+    view.error = error;
+    let mut response = page(view)?;
+    *response.status_mut() = StatusCode::UNPROCESSABLE_ENTITY;
+    Ok(response)
 }
 
 pub(crate) async fn create(
@@ -162,49 +243,45 @@ async fn modify(
     if let Some(response) = denied(auth::current(&app, &session).await?.as_ref()) {
         return Ok(response);
     }
-    if !auth::valid_post(&app.auth, &headers, &session, &form.csrf).await? || id == Some(ADMIN) {
+    if !auth::valid_post(&app.auth, &headers, &session, &form.csrf).await? {
         return Ok(auth::forbidden());
     }
-    if !matches!(
-        (id, action),
-        (None, "crear") | (Some(_), "editar" | "restablecer" | "eliminar")
-    ) {
-        return Ok(StatusCode::NOT_FOUND.into_response());
-    }
-
+    let view = match form_page(&app, &session, id, action).await? {
+        Ok(view) => view,
+        Err(status) => return Ok(status.into_response()),
+    };
     if matches!(action, "crear" | "editar") {
         form.username = form.username.trim().to_ascii_lowercase();
-        form.name = form.name.trim().to_owned();
-        let valid = (3..=32).contains(&form.username.len())
-            && form
+        if !(3..=32).contains(&form.username.len())
+            || !form
                 .username
                 .bytes()
                 .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
-            && form.username != "admin"
-            && (1..=80).contains(&form.name.chars().count())
-            && !form.name.chars().any(char::is_control);
-        if !valid {
-            return render(
-                &app,
-                &session,
+            || form.username == "admin"
+        {
+            return invalid(
+                view,
                 form,
-                String::new(),
-                "Indica un nombre y un usuario válido de 3 a 32 caracteres.",
-            )
-            .await;
+                "Usa de 3 a 32 letras sin acentos, números, guiones o guiones bajos. «admin» está reservado.",
+            );
         }
     }
-
-    let mut temporary = String::new();
     let hash = if matches!(action, "crear" | "restablecer") {
-        temporary = Uuid::new_v4().simple().to_string();
-        let Some(hash) = auth::generate_hash(temporary.clone()).await? else {
+        if !auth::valid_password(&form.password) || form.password != form.repeat {
+            return invalid(
+                view,
+                form,
+                "Usa al menos 15 caracteres y un máximo de 256 bytes. Las contraseñas deben coincidir.",
+            );
+        }
+        let Some(hash) = auth::generate_hash(std::mem::take(&mut form.password)).await? else {
             return Ok(StatusCode::SERVICE_UNAVAILABLE.into_response());
         };
         hash
     } else {
         String::new()
     };
+
     let expiry = Utc::now().timestamp() + 86_400;
     let mut tx = app.db.begin_with("BEGIN IMMEDIATE").await?;
     if matches!(action, "crear" | "editar") {
@@ -216,18 +293,10 @@ async fn modify(
                 .await?;
         if duplicate {
             tx.rollback().await?;
-            return render(
-                &app,
-                &session,
-                form,
-                String::new(),
-                "Ese usuario ya existe.",
-            )
-            .await;
+            return invalid(view, form, "Ese usuario ya existe.");
         }
     }
-
-    if matches!(action, "restablecer" | "eliminar") {
+    if action == "eliminar" {
         let username: Option<String> =
             sqlx::query_scalar("SELECT username FROM users WHERE id = ?")
                 .bind(id)
@@ -236,44 +305,115 @@ async fn modify(
         let Some(username) = username else {
             return Ok(StatusCode::NOT_FOUND.into_response());
         };
-        if action == "eliminar" && form.username.trim() != username {
+        if form.username.trim() != username {
             tx.rollback().await?;
-            return render(
-                &app,
-                &session,
-                Change::default(),
-                String::new(),
-                "Confirma el nombre de la cuenta antes de eliminarla.",
-            )
-            .await;
+            return invalid(
+                UserForm {
+                    target: username,
+                    ..view
+                },
+                form,
+                "Confirma el nombre de usuario antes de eliminar la cuenta.",
+            );
         }
-        form.username = username;
     }
 
-    let changed: Option<i64> = match action {
-        "crear" => sqlx::query_scalar("INSERT INTO users (username, name, password_hash, temporary_until) VALUES (?, ?, ?, ?) RETURNING id")
-            .bind(&form.username).bind(&form.name).bind(hash).bind(expiry).fetch_optional(&mut *tx).await?,
-        "editar" => sqlx::query_scalar("UPDATE users SET username = ?, name = ? WHERE id = ? RETURNING id")
-            .bind(&form.username).bind(&form.name).bind(id).fetch_optional(&mut *tx).await?,
-        "restablecer" => sqlx::query_scalar("UPDATE users SET password_hash = ?, temporary_until = ?, version = version + 1 WHERE id = ? RETURNING id")
-            .bind(hash).bind(expiry).bind(id).fetch_optional(&mut *tx).await?,
-        "eliminar" => sqlx::query_scalar("DELETE FROM users WHERE id = ? RETURNING id")
-            .bind(id).fetch_optional(&mut *tx).await?,
+    let (changed, notice): (Option<i64>, &str) = match action {
+        "crear" => (sqlx::query_scalar("INSERT INTO users (username, name, password_hash, temporary_until) VALUES (?, '', ?, ?) RETURNING id")
+            .bind(&form.username).bind(hash).bind(expiry).fetch_optional(&mut *tx).await?, "Cuenta creada. Comparte la contraseña temporal por privado."),
+        "editar" => (sqlx::query_scalar("UPDATE users SET username = ? WHERE id = ? RETURNING id")
+            .bind(&form.username).bind(id).fetch_optional(&mut *tx).await?, "Usuario actualizado."),
+        "restablecer" => (sqlx::query_scalar("UPDATE users SET password_hash = ?, temporary_until = ?, version = version + 1 WHERE id = ? RETURNING id")
+            .bind(hash).bind(expiry).bind(id).fetch_optional(&mut *tx).await?, "Contraseña restablecida. Comparte la contraseña temporal por privado."),
+        "eliminar" => (sqlx::query_scalar("DELETE FROM users WHERE id = ? RETURNING id")
+            .bind(id).fetch_optional(&mut *tx).await?, "Cuenta eliminada. Sus tareas se conservaron."),
         _ => unreachable!(),
     };
     let Some(changed) = changed else {
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
-    sqlx::query("INSERT INTO user_events (actor_id, user_id, action) VALUES (1, ?, ?)")
+    sqlx::query("INSERT INTO user_events (actor_id, user_id, action) VALUES (?, ?, ?)")
+        .bind(ADMIN)
         .bind(changed)
         .bind(action)
         .execute(&mut *tx)
         .await?;
     tx.commit().await?;
+    session.insert("users_notice", notice).await?;
+    Ok(Redirect::to("/usuarios").into_response())
+}
 
-    if temporary.is_empty() {
-        Ok(Redirect::to("/usuarios").into_response())
-    } else {
-        render(&app, &session, form, temporary, "").await
+#[derive(Template)]
+#[template(path = "profile.html")]
+struct Profile {
+    account_id: i64,
+    csrf: String,
+    name: String,
+    notice: String,
+    error: &'static str,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct ProfileChange {
+    csrf: String,
+    name: String,
+}
+
+pub(crate) async fn profile(
+    State(app): State<App>,
+    session: Session,
+) -> Result<Response, AppError> {
+    let Some(user) = auth::current(&app, &session).await? else {
+        return Ok(Redirect::to("/login").into_response());
+    };
+    page(Profile {
+        account_id: user.id,
+        csrf: auth::csrf(&session).await?,
+        name: user.name,
+        notice: session
+            .remove::<String>("profile_notice")
+            .await?
+            .unwrap_or_default(),
+        error: "",
+    })
+}
+
+pub(crate) async fn update_profile(
+    State(app): State<App>,
+    session: Session,
+    headers: HeaderMap,
+    Form(form): Form<ProfileChange>,
+) -> Result<Response, AppError> {
+    let Some(user) = auth::current(&app, &session).await? else {
+        return Ok(Redirect::to("/login").into_response());
+    };
+    if !auth::valid_post(&app.auth, &headers, &session, &form.csrf).await? {
+        return Ok(auth::forbidden());
     }
+    let name = form.name.trim();
+    if !(1..=80).contains(&name.chars().count()) || name.chars().any(char::is_control) {
+        let mut response = page(Profile {
+            account_id: user.id,
+            csrf: form.csrf,
+            name: name.to_owned(),
+            notice: String::new(),
+            error: "Ingresa un nombre visible de 1 a 80 caracteres.",
+        })?;
+        *response.status_mut() = StatusCode::UNPROCESSABLE_ENTITY;
+        return Ok(response);
+    }
+    let changed = sqlx::query("UPDATE users SET name = ? WHERE id = ? AND version = ?")
+        .bind(name)
+        .bind(user.id)
+        .bind(user.version)
+        .execute(&app.db)
+        .await?
+        .rows_affected();
+    if changed == 0 {
+        return Ok(Redirect::to("/login").into_response());
+    }
+    session
+        .insert("profile_notice", "Nombre visible actualizado.")
+        .await?;
+    Ok(Redirect::to("/cuenta").into_response())
 }
