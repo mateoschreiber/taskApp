@@ -1,0 +1,93 @@
+.chart-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: clamp(1.25rem, 4vw, 2.5rem);
+  color: #fff;
+  background: radial-gradient(ellipse at 100% 0%, #e42b43, transparent 65%), #851330;
+  border-radius: 1.35rem;
+}
+
+.chart-banner p { margin-top: .5rem; }
+.chart-banner .ico { width: 3rem; height: 3rem; }
+.chart-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+  gap: .65rem;
+  padding: 1rem;
+  margin-top: 1rem;
+}
+.chart-controls input { min-width: 0; }
+.chart-controls .primary { grid-column: 1; grid-row: 2; }
+#chart-pdf { grid-column: 2; grid-row: 2; padding-inline: .55rem; }
+.chart-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem;
+  grid-column: 1 / -1;
+  grid-row: 3;
+}
+.chart-presets button { border-color: var(--line); }
+.chart-message { min-height: 1.5rem; margin: 1rem 0; color: var(--muted); }
+.chart-grid { display: grid; gap: .9rem; }
+.chart-card { min-width: 0; padding: 1.05rem; }
+.chart-card h2 { margin-bottom: .75rem; font-size: 1.2rem; }
+.chart-series { list-style: none; margin: 0; padding: 0; }
+.chart-timeline .chart-series {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 6.5rem), 1fr));
+  gap: .2rem .5rem;
+}
+.chart-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: .25rem .7rem;
+  align-content: center;
+  min-height: 44px;
+  width: 100%;
+  padding: .4rem .5rem;
+  color: var(--ink);
+  background: transparent;
+  border: 0;
+  border-radius: .55rem;
+  text-align: start;
+}
+.chart-bar:hover { background: var(--blush); }
+.chart-bar span { overflow-wrap: anywhere; }
+.chart-bar strong { color: var(--wine); font-variant-numeric: tabular-nums; }
+.chart-bar meter {
+  grid-column: 1 / -1;
+  width: 100%;
+  height: .48rem;
+  background: #f1e6e3;
+  border: 0;
+  border-radius: 1rem;
+}
+.chart-bar meter::-webkit-meter-bar { background: #f1e6e3; border: 0; }
+.chart-bar meter::-webkit-meter-optimum-value { background: var(--action); border-radius: 1rem; }
+.chart-bar meter::-moz-meter-bar { background: var(--action); border-radius: 1rem; }
+.chart-detail {
+  width: min(34rem, calc(100% - 1.5rem));
+  max-height: 80vh;
+  max-height: 80dvh;
+  padding: 1.25rem;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.chart-detail::backdrop { background: #2b1220ae; }
+.chart-detail header { display: flex; align-items: start; justify-content: space-between; gap: .75rem; }
+.chart-detail p { margin: .5rem 0; color: var(--muted); }
+.chart-detail ul { list-style: none; padding: 0; margin: 0; }
+.chart-detail li { display: grid; padding: .65rem 0; border-bottom: 1px solid var(--line); }
+.chart-detail li a { min-height: 44px; display: flex; align-items: center; }
+.chart-detail li span { color: var(--muted); font-size: .9rem; }
+@media (min-width: 45rem) {
+  .chart-controls { grid-template-columns: repeat(2, minmax(0, 1fr)) auto auto; }
+  .chart-controls .primary { grid-column: 3; grid-row: 1; }
+  #chart-pdf { grid-column: 4; grid-row: 1; padding-inline: 1rem; }
+  .chart-presets { grid-row: 2; }
+  .chart-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem 1rem; }
+  .chart-timeline { grid-column: 1 / -1; }
+}

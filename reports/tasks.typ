@@ -62,18 +62,25 @@
 )
 
 #v(6pt)
-#block(sticky: true)[#caption("DISTRIBUCIÓN POR ESTADO", color: wine)]
-#v(3pt)
-#grid(columns: (1fr, 1fr), column-gutter: 16pt, row-gutter: 5pt,
-  ..data.states.pairs().map(pair => block(width: 100%, breakable: false)[
-    #grid(columns: (1fr, auto), gutter: 5pt,
-      text(size: 10pt, plain(pair.at(0))), text(font: mono, size: 9pt, str(pair.at(1))))
-    #v(1pt)
-    #block(width: 100%, height: 2pt, fill: rule)[
-      #rect(width: pair.at(1) / data.tasks.len() * 100%, height: 2pt, fill: red, stroke: none)
+#let chart-bar(bar, maximum) = block(width: 100%, breakable: false)[
+  #grid(columns: (1fr, auto), gutter: 6pt,
+    text(size: 9pt, plain(bar.label)), caption(str(bar.count), color: wine))
+  #block(width: 100%, height: 2.5pt, fill: rule)[
+    #rect(width: bar.count / maximum * 100%, height: 2.5pt, fill: red, stroke: none)
+  ]
+]
+#for chart in data.charts {
+  let maximum = calc.max(1, ..chart.bars.map(bar => bar.count))
+  block(sticky: true, above: 10pt, below: 4pt)[
+    #text(size: 12pt, weight: "bold", fill: wine, chart.title)
+  ]
+  for row in chart.bars.chunks(2) {
+    block(breakable: false, below: 3pt)[
+      #grid(columns: (1fr, 1fr), column-gutter: 14pt, ..row.map(bar => chart-bar(bar, maximum)))
     ]
-  ])
-)
+  }
+}
+#block(sticky: true, above: 14pt)[#text(size: 14pt, weight: "bold", fill: wine)[Detalle de tareas]]
 
 #let previous = ""
 #for task in data.tasks {

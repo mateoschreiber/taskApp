@@ -1,8 +1,10 @@
-# ![taskApp · Bitácora de trabajo diario](docs/media/cover.png)
+# taskApp
+
+![Bitácora de trabajo diario con una ilustración de tienda](docs/media/cover.png)
 
 Registra cada trabajo desde la tienda. Al cerrar la jornada, puedes consultar qué se hizo, qué quedó pendiente y sacar un informe para compartir. taskApp es una aplicación privada para móvil y escritorio.
 
-[Puesta en marcha](#puesta-en-marcha) · [Jornada](#la-jornada-en-tienda) · [Informes](#del-historial-al-informe) · [Uso sin conexión](#llevarla-en-el-móvil) · [Servidor](#despliegue-en-servidor)
+[Puesta en marcha](#puesta-en-marcha) · [Jornada](#la-jornada-en-tienda) · [Gráficos](#gráficos) · [Informes](#del-historial-al-informe) · [Uso sin conexión](#llevarla-en-el-móvil) · [Servidor](#despliegue-en-servidor)
 
 ## Puesta en marcha
 
@@ -27,14 +29,22 @@ En **Hoy**, consulta cuántas tareas se registraron y en cuántas tiendas. Abre 
 
 [Ver captura móvil](docs/media/mobile.png) · [Ver captura de escritorio](docs/media/desktop.png)
 
+## Gráficos
+
+Elige el mes en curso, los últimos 7 o 30 días o un rango personalizado. Consulta la evolución de tareas, la actividad por tienda, los estados, los trabajos más frecuentes y los tipos de intervención. Toca una barra para ver las tareas que representa. El PDF descarga los cinco gráficos y el detalle de todo el rango.
+
+![Gráficos de taskApp en escritorio con datos ficticios y barras interactivas.](docs/media/charts-desktop.png)
+
+[Ver gráficos en móvil](docs/media/charts-mobile.png) · [Ver el informe de muestra](docs/media/report.png)
+
 ## Del historial al informe
 
 En **Historial → Exportar**, elige el primer y el último día. La descarga incluye ambas fechas y los registros guardados de todas las tiendas.
 
 | Formato | Qué contiene |
 | --- | --- |
-| **Excel · .xlsx** | Dos hojas. **Resumen** reúne los totales y **Tareas** conserva los campos del registro, las fechas de Excel, las observaciones y los filtros por columna. |
-| **PDF · A4** | Un informe listo para compartir, con resumen por estado, trabajos agrupados por fecha, observaciones completas y paginación. |
+| **Excel · .xlsx** | Una hoja **Tareas** con los campos del registro y las fechas del rango seleccionado. |
+| **PDF · A4** | Un informe listo para compartir, con cinco gráficos, trabajos agrupados por fecha y observaciones completas. |
 
 <details>
 <summary><strong>Ver una página del informe PDF</strong></summary>
@@ -50,7 +60,7 @@ Abre la URL **HTTPS** del servidor desde el teléfono. En Chromium, elige la opc
 | Durante la jornada | Qué sucede |
 | --- | --- |
 | **Preparar la visita** | Al entrar con conexión se descargan los catálogos y las tareas de los últimos 30 días. La copia permite trabajar hasta ocho horas desde la última actualización. |
-| **Trabajar sin señal** | Puedes registrar tareas y editar las que ya están en el dispositivo. El historial completo y las exportaciones requieren conexión. |
+| **Trabajar sin señal** | Puedes registrar tareas y editar las que ya están en el dispositivo. En Gráficos puedes explorar las tareas confirmadas de la copia local. El historial completo y las exportaciones requieren conexión. |
 | **Volver a tener señal** | Con la app abierta, los cambios se envían automáticamente. En **Dispositivo** puedes reintentar el envío o comparar dos versiones de una tarea y decidir cuál conservar. |
 
 Si vence la sesión, vuelve a entrar con conexión para recuperar los cambios pendientes. **Cerrar sesión** borra los datos de ese dispositivo y pide confirmación si quedan cambios por enviar.

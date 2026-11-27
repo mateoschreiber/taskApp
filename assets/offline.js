@@ -40,6 +40,16 @@ function workspace(db, change) {
   });
 }
 
+export async function chartSnapshot() {
+  const db = await openDb();
+  try {
+    const state = await workspace(db);
+    return available(state) ? { ...state.snapshot, expires: state.expires } : null;
+  } finally {
+    db.close();
+  }
+}
+
 function asuncionToday() {
   const parts = Object.fromEntries(new Intl.DateTimeFormat('en', {
     timeZone: 'America/Asuncion', year: 'numeric', month: '2-digit', day: '2-digit',

@@ -2,6 +2,7 @@
   <a href="/" {% if active == "today" %}aria-current="page"{% endif %}><svg class="ico" aria-hidden="true"><use href="#i-today"/></svg>Hoy</a>
   <a href="/tareas/nueva" {% if active == "task" %}aria-current="page"{% endif %}><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg>Nueva tarea</a>
   <a href="/historial" {% if active == "history" %}aria-current="page"{% else if active == "edit" || active == "export" %}aria-current="location"{% endif %}><svg class="ico" aria-hidden="true"><use href="#i-history"/></svg>Historial</a>
+  <a href="/graficos" {% if active == "charts" %}aria-current="page"{% endif %}><svg class="ico" aria-hidden="true"><use href="#i-chart"/></svg>Gráficos</a>
   <a href="/sin-conexion" data-pending {% if active == "device" %}aria-current="page"{% endif %}><svg class="ico" aria-hidden="true"><use href="#i-device"/></svg>Dispositivo <span class="queue-count" data-pending-count hidden></span></a>
 </nav>
 <div class="session-tools">

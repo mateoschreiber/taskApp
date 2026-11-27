@@ -1,4 +1,5 @@
 mod auth;
+mod charts;
 mod exports;
 mod tasks;
 
@@ -79,6 +80,8 @@ asset!(
 );
 asset!(worker, "sw.js", "text/javascript; charset=utf-8");
 asset!(offline_js, "offline.js", "text/javascript; charset=utf-8");
+asset!(charts_js, "charts.js", "text/javascript; charset=utf-8");
+asset!(charts_css, "charts.css", "text/css; charset=utf-8");
 asset!(icon, "icon-192.png", "image/png");
 asset!(apple_icon, "icon-180.png", "image/png");
 asset!(large_icon, "icon-512.png", "image/png");
@@ -151,6 +154,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let app = Router::new()
         .route("/", get(tasks::home).post(tasks::create))
         .route("/historial", get(tasks::history))
+        .route("/graficos", get(charts::dashboard))
+        .route("/graficos/sin-conexion", get(charts::offline))
+        .route("/api/graficos", get(charts::data))
+        .route("/charts.js", get(charts_js))
+        .route("/charts.css", get(charts_css))
         .route("/tareas/nueva", get(tasks::new_task).post(tasks::create))
         .route("/tareas/{id}", get(tasks::edit).post(tasks::update))
         .route("/exportar", get(exports::form))

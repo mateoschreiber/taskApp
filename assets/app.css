@@ -54,7 +54,7 @@ img { max-inline-size: 100%; }
 .wordmark { font: 800 1.58rem / 1 var(--display); letter-spacing: -.075em; }
 .wordmark span { font-weight: 560; }
 .nav {
-  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));
   position: fixed; z-index: 8; inset: auto 0 0;
   padding: .4rem max(.5rem, env(safe-area-inset-right)) max(.42rem, env(safe-area-inset-bottom)) max(.5rem, env(safe-area-inset-left));
   background: var(--paper); border-top: 1px solid var(--line); box-shadow: 0 -4px 20px #4d151008;

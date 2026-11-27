@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, io, time::Duration};
+use std::{io, time::Duration};
 
 use askama::Template;
 use axum::{
@@ -7,13 +7,13 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Datelike;
-use rust_xlsxwriter::{Color, Format, FormatAlign, Workbook};
+use rust_xlsxwriter::{Format, Workbook};
 use serde::{Deserialize, Serialize};
 use tokio::{process::Command, sync::Semaphore};
 use tower_sessions::Session;
 
 use crate::{
-    App, AppError, auth, page,
+    App, AppError, auth, charts, page,
     tasks::{self, Task},
 };
 
@@ -59,7 +59,7 @@ pub(crate) async fn form(session: Session) -> Result<Response, AppError> {
 struct Report {
     period: String,
     tasks: Vec<Task>,
-    states: BTreeMap<String, usize>,
+    charts: Vec<charts::Chart>,
 }
 
 pub(crate) async fn download(
@@ -108,16 +108,12 @@ pub(crate) async fn download(
         );
     };
     let rows = tasks::in_range(&app.db, from, through).await?;
-    if rows.is_empty() {
+    if rows.is_empty() && view.pdf {
         return render_error(
             view,
             StatusCode::UNPROCESSABLE_ENTITY,
             "No hay tareas guardadas en este período.",
         );
-    }
-    let mut states = BTreeMap::new();
-    for task in &rows {
-        *states.entry(task.status.clone()).or_insert(0) += 1;
     }
     let report = Report {
         period: format!(
@@ -125,8 +121,12 @@ pub(crate) async fn download(
             from.format("%d/%m/%Y"),
             through.format("%d/%m/%Y")
         ),
+        charts: if view.pdf {
+            charts::summarize(&rows, from, through)
+        } else {
+            Vec::new()
+        },
         tasks: rows,
-        states,
     };
     let (extension, content_type, bytes) = if view.pdf {
         let bytes = pdf(report).await?;
@@ -157,71 +157,11 @@ pub(crate) async fn download(
 
 fn excel(report: &Report) -> Result<Vec<u8>, rust_xlsxwriter::XlsxError> {
     let mut workbook = Workbook::new();
-    let ink = Color::RGB(0x231D20);
-    let wine = Color::RGB(0x600F24);
-    let red = Color::RGB(0xBC102A);
-    let white = Color::White;
-    let title = Format::new()
-        .set_font_size(20)
-        .set_bold()
-        .set_font_color(white)
-        .set_background_color(wine)
-        .set_align(FormatAlign::VerticalCenter);
-    let subtitle = Format::new()
-        .set_font_color(wine)
-        .set_font_size(11)
-        .set_background_color(Color::RGB(0xF9E8EA))
-        .set_align(FormatAlign::VerticalCenter);
-    let heading = Format::new()
-        .set_bold()
-        .set_background_color(red)
-        .set_font_color(white)
-        .set_align(FormatAlign::VerticalCenter);
-    let body = Format::new()
-        .set_font_color(ink)
-        .set_text_wrap()
-        .set_align(FormatAlign::Top);
-    let striped = body.clone().set_background_color(Color::RGB(0xF7F5F2));
-    let date_formats = [
-        body.clone().set_num_format("dd/mm/yyyy"),
-        striped.clone().set_num_format("dd/mm/yyyy"),
-    ];
-
-    let summary = workbook.add_worksheet();
-    summary
-        .set_name("Resumen")?
-        .set_screen_gridlines(false)
-        .set_tab_color(wine);
-    summary.set_column_width(0, 40)?.set_column_width(1, 20)?;
-    summary
-        .merge_range(0, 0, 0, 1, "Registro de trabajos", &title)?
-        .set_row_height(0, 40)?
-        .set_row_height(1, 22)?;
-    summary.merge_range(1, 0, 1, 1, &report.period, &subtitle)?;
-    summary.write_string_with_format(3, 0, "Total de tareas", &heading)?;
-    summary.write_number_with_format(3, 1, report.tasks.len() as f64, &heading)?;
-    for (index, (label, count)) in report.states.iter().enumerate() {
-        let row = index as u32 + 5;
-        let style = if index % 2 == 0 { &body } else { &striped };
-        summary.write_string_with_format(row, 0, label, style)?;
-        summary.write_number_with_format(row, 1, *count as f64, style)?;
-    }
-
     let sheet = workbook.add_worksheet();
-    sheet
-        .set_name("Tareas")?
-        .set_screen_gridlines(false)
-        .set_tab_color(red)
-        .set_landscape();
-    sheet.set_print_fit_to_pages(1, 0);
-    sheet.set_freeze_panes(4, 2)?;
-    sheet
-        .merge_range(0, 0, 0, 7, "Trabajos realizados", &title)?
-        .set_row_height(0, 40)?
-        .set_row_height(1, 22)?;
-    sheet.merge_range(1, 0, 1, 7, &report.period, &subtitle)?;
-    sheet.set_row_height(3, 25)?;
-    for (index, (label, width)) in [
+    sheet.set_name("Tareas")?;
+    let heading = Format::new().set_bold();
+    let date_format = Format::new().set_num_format("dd/mm/yyyy");
+    let columns = [
         ("Fecha de actividad", 19),
         ("Tienda", 33),
         ("Supervisor General", 26),
@@ -230,26 +170,22 @@ fn excel(report: &Report) -> Result<Vec<u8>, rust_xlsxwriter::XlsxError> {
         ("Tipo de intervención", 32),
         ("Estado", 25),
         ("Detalle / observaciones", 65),
-    ]
-    .into_iter()
-    .enumerate()
-    {
+    ];
+    for (index, (label, width)) in columns.into_iter().enumerate() {
         let column = index as u16;
-        sheet
-            .set_column_width(column, width)?
-            .write_string_with_format(3, column, label, &heading)?;
+        sheet.set_column_width(column, width)?;
+        sheet.write_string_with_format(0, column, label, &heading)?;
     }
     for (index, task) in report.tasks.iter().enumerate() {
-        let row = index as u32 + 4;
-        let style = if index % 2 == 0 { &body } else { &striped };
+        let row = index as u32 + 1;
         if let Some(date) =
             tasks::parse_date(&task.activity_date).filter(|date| date.year() >= 1900)
         {
-            sheet.write_date_with_format(row, 0, date, &date_formats[index % 2])?;
+            sheet.write_date_with_format(row, 0, date, &date_format)?;
         } else {
-            sheet.write_string_with_format(row, 0, &task.activity_date, style)?;
+            sheet.write_string(row, 0, &task.activity_date)?;
         }
-        for (index, value) in [
+        for (column, value) in [
             &task.store,
             &task.supervisor,
             &task.zone,
@@ -261,13 +197,11 @@ fn excel(report: &Report) -> Result<Vec<u8>, rust_xlsxwriter::XlsxError> {
         .into_iter()
         .enumerate()
         {
-            sheet.write_string_with_format(row, (index + 1) as u16, value, style)?;
+            sheet.write_string(row, (column + 1) as u16, value)?;
         }
     }
-    sheet.autofilter(3, 0, report.tasks.len() as u32 + 3, 7)?;
     workbook.save_to_buffer()
 }
-
 async fn pdf(report: Report) -> Result<Vec<u8>, AppError> {
     let folder = tempfile::tempdir()?;
     let path = folder.path();
