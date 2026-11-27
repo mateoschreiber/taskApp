@@ -65,6 +65,10 @@ Abre la URL **HTTPS** del servidor desde el teléfono. En Chromium, elige la opc
 
 Si vence la sesión, vuelve a entrar con conexión para recuperar los cambios pendientes. **Cerrar sesión** borra los datos de ese dispositivo y pide confirmación si quedan cambios por enviar.
 
+## Usuarios
+
+La cuenta **admin** gestiona el acceso desde **Usuarios**. Cada persona trabaja con sus propias tareas y sugerencias. Admin puede consultar y exportar el conjunto. Consulta la [gu?a de usuarios, permisos y migraci?n](docs/usuarios.md).
+
 ## Despliegue en servidor
 
 1. Crea un túnel de Cloudflare y dirige el dominio público a `http://app:8080`. Activa la redirección a HTTPS y guarda el token del túnel en `secrets/tunnel_token`.

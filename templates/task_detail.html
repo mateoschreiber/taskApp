@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Consultar tarea · taskApp{% endblock %}
+{% block navigation %}{% let active = "edit" %}{% include "nav.html" %}{% endblock %}
+{% block content %}
+<a class="back-link" href="/historial">Volver al historial</a>
+<header class="page-heading"><h1>{{ task.work }}</h1><p>Consulta de solo lectura{% if task.owner_id.is_none() %} · Cuenta eliminada{% endif %}</p></header>
+<section class="paper-card task-group">
+ <dl class="task-group">
+  <dt>Fecha de actividad</dt><dd>{{ task.display_date() }}</dd>
+  <dt>Tienda</dt><dd>{{ task.store }}</dd>
+  <dt>Supervisor General</dt><dd>{{ task.supervisor }}</dd>
+  <dt>Zona</dt><dd>{{ task.zone }}</dd>
+  <dt>Tipo de intervención</dt><dd>{{ task.intervention }}</dd>
+  <dt>Estado</dt><dd>{{ task.status }}</dd>
+  <dt>Observaciones</dt><dd>{{ task.notes }}</dd>
+ </dl>
+</section>
+{% endblock %}

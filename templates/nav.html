@@ -5,7 +5,8 @@
   <a href="/graficos" {% if active == "charts" %}aria-current="page"{% endif %}><svg class="ico" aria-hidden="true"><use href="#i-chart"/></svg>Gráficos</a>
   <a href="/sin-conexion" data-pending {% if active == "device" %}aria-current="page"{% endif %}><svg class="ico" aria-hidden="true"><use href="#i-device"/></svg>Dispositivo <span class="queue-count" data-pending-count hidden></span></a>
 </nav>
-<div class="session-tools">
+<div class="session-tools" data-account-id="{{ account_id }}">
+  {% if account_id == 1 %}<a class="quiet" href="/usuarios" {% if active == "usuarios" %}aria-current="page"{% endif %}>Usuarios</a>{% endif %}
   <span class="connection" data-connection role="status" hidden><span class="signal" aria-hidden="true"></span><span data-connection-label></span></span>
   {% if !csrf.is_empty() %}
   <form action="/salir" method="post" class="signout">

@@ -19,33 +19,51 @@ use crate::{
 #[derive(Template)]
 #[template(path = "charts.html")]
 struct ChartsPage {
+    account_id: i64,
+    accounts: Vec<crate::users::Account>,
+    selected_account: String,
     csrf: String,
     from: String,
     through: String,
 }
 
-fn view(csrf: String) -> Result<Response, AppError> {
+fn view(
+    csrf: String,
+    account_id: i64,
+    accounts: Vec<crate::users::Account>,
+) -> Result<Response, AppError> {
     let (from, through) = exports::defaults();
     page(ChartsPage {
+        account_id,
+        accounts,
+        selected_account: String::new(),
         csrf,
         from,
         through,
     })
 }
 
-pub(crate) async fn dashboard(session: Session) -> Result<Response, AppError> {
-    if !auth::authenticated(&session).await? {
+pub(crate) async fn dashboard(
+    State(app): State<App>,
+    session: Session,
+) -> Result<Response, AppError> {
+    let Some(user) = auth::current(&app, &session).await? else {
         return Ok(Redirect::to("/login").into_response());
-    }
-    view(auth::csrf(&session).await?)
+    };
+    view(
+        auth::csrf(&session).await?,
+        user.id,
+        crate::users::accounts(&app.db, user.admin()).await?,
+    )
 }
 
 pub(crate) async fn offline() -> Result<Response, AppError> {
-    view(String::new())
+    view(String::new(), 0, Vec::new())
 }
 
 #[derive(Deserialize)]
 pub(crate) struct Range {
+    usuario: Option<String>,
     desde: String,
     hasta: String,
 }
@@ -55,16 +73,22 @@ pub(crate) async fn data(
     session: Session,
     Query(range): Query<Range>,
 ) -> Result<Response, AppError> {
-    if !auth::authenticated(&session).await? {
+    let Some(user) = auth::current(&app, &session).await? else {
         return Ok(StatusCode::UNAUTHORIZED.into_response());
-    }
+    };
     let dates = tasks::parse_date(&range.desde).zip(tasks::parse_date(&range.hasta));
     let Some((from, through)) = dates.filter(|(from, through)| from <= through) else {
         return Ok(StatusCode::UNPROCESSABLE_ENTITY.into_response());
     };
-    let rows = tasks::in_range(&app.db, from, through).await?;
+    let Some(owner) = user.scope(range.usuario.as_deref()) else {
+        return Ok(auth::forbidden());
+    };
+    let rows = tasks::in_range(&app.db, from, through, owner).await?;
     let charts = summarize(&rows, from, through);
-    Ok(Json(serde_json::json!({ "charts": charts, "tasks": rows })).into_response())
+    Ok(
+        Json(serde_json::json!({ "charts": charts, "tasks": rows, "account_id": user.id }))
+            .into_response(),
+    )
 }
 
 #[derive(Serialize)]

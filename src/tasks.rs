@@ -44,6 +44,8 @@ type Values = HashMap<String, String>;
 
 #[derive(FromRow, Serialize)]
 pub(crate) struct Task {
+    #[serde(skip)]
+    pub owner_id: Option<i64>,
     pub id: i64,
     pub revision: i64,
     pub activity_date: String,
@@ -98,24 +100,29 @@ struct OptionRow {
     label: String,
 }
 
-async fn catalog(db: &SqlitePool) -> Result<Vec<OptionRow>, AppError> {
+async fn catalog(db: &SqlitePool, owner: i64) -> Result<Vec<OptionRow>, AppError> {
     Ok(
-        sqlx::query_as("SELECT kind, label FROM catalog ORDER BY key")
+        sqlx::query_as("SELECT kind, label FROM (SELECT kind, key, label FROM catalog UNION ALL SELECT kind, key, label FROM user_catalog WHERE user_id = ?) ORDER BY key").bind(owner)
             .fetch_all(db)
             .await?,
     )
 }
 
-async fn find_task(db: &SqlitePool, id: i64) -> Result<Option<Task>, AppError> {
-    Ok(sqlx::query_as("SELECT * FROM tasks WHERE id = ?")
-        .bind(id)
-        .fetch_optional(db)
-        .await?)
+async fn find_task(db: &SqlitePool, id: i64, owner: Option<i64>) -> Result<Option<Task>, AppError> {
+    Ok(
+        sqlx::query_as("SELECT * FROM tasks WHERE id = ? AND (? IS NULL OR owner_id = ?)")
+            .bind(id)
+            .bind(owner)
+            .bind(owner)
+            .fetch_optional(db)
+            .await?,
+    )
 }
 
 #[derive(Template)]
 #[template(path = "task.html")]
 struct TaskPage {
+    account_id: i64,
     csrf: String,
     editing: bool,
     action: String,
@@ -154,12 +161,15 @@ async fn form_page(
     conflict: Option<Task>,
 ) -> Result<Response, AppError> {
     let csrf = auth::csrf(session).await?;
-    let options = catalog(&app.db).await?;
+    let Some(user) = auth::current(app, session).await? else {
+        return Ok(Redirect::to("/login").into_response());
+    };
+    let options = catalog(&app.db, user.id).await?;
     let has_errors = !errors.is_empty();
     let has_conflict = conflict.is_some();
-    let mut response = page(task_page(
-        csrf, id, values, errors, saved, options, conflict,
-    ))?;
+    let mut view = task_page(csrf, id, values, errors, saved, options, conflict);
+    view.account_id = user.id;
+    let mut response = page(view)?;
     if has_conflict {
         *response.status_mut() = StatusCode::CONFLICT;
     } else if has_errors {
@@ -194,6 +204,7 @@ fn task_page(
         .collect();
     let has_errors = !errors.is_empty();
     TaskPage {
+        account_id: 0,
         offline: csrf.is_empty(),
         csrf,
         editing: id.is_some(),
@@ -247,9 +258,9 @@ pub(crate) async fn new_task(
     session: Session,
     Query(query): Query<NewQuery>,
 ) -> Result<Response, AppError> {
-    if !auth::authenticated(&session).await? {
+    let Some(user) = auth::current(&app, &session).await? else {
         return Ok(Redirect::to("/login").into_response());
-    }
+    };
 
     let mut values = Values::from([
         ("date".into(), today().to_string()),
@@ -261,7 +272,7 @@ pub(crate) async fn new_task(
     }
     let mut saved = false;
     if let Some(id) = query.saved
-        && let Some(task) = find_task(&app.db, id).await?
+        && let Some(task) = find_task(&app.db, id, Some(user.id)).await?
     {
         values.insert("date".into(), task.activity_date);
         values.insert("store".into(), task.store);
@@ -279,12 +290,19 @@ pub(crate) async fn edit(
     session: Session,
     Path(id): Path<i64>,
 ) -> Result<Response, AppError> {
-    if !auth::authenticated(&session).await? {
+    let Some(user) = auth::current(&app, &session).await? else {
         return Ok(Redirect::to("/login").into_response());
-    }
-    let Some(task) = find_task(&app.db, id).await? else {
+    };
+    let Some(task) = find_task(&app.db, id, user.scope(None).flatten()).await? else {
         return Ok(not_found());
     };
+    if task.owner_id != Some(user.id) {
+        return page(TaskDetail {
+            account_id: user.id,
+            csrf: auth::csrf(&session).await?,
+            task,
+        });
+    }
     form_page(
         &app,
         &session,
@@ -323,15 +341,16 @@ async fn save(
     id: Option<i64>,
     values: Values,
 ) -> Result<Response, AppError> {
-    if !auth::authenticated(&session).await? {
+    let Some(user) = auth::current(&app, &session).await? else {
         return Ok(Redirect::to("/login").into_response());
-    }
+    };
     if !auth::valid_post(&app.auth, &headers, &session, value(&values, "csrf")).await? {
         return Ok(auth::forbidden());
     }
 
     let revision = value(&values, "revision").parse().ok();
-    match persist(&app.db, id, revision, None, &values).await? {
+    match persist(&app.db, &user, id, revision, None, &values).await? {
+        Save::Unauthorized => Ok(Redirect::to("/login").into_response()),
         Save::Invalid(errors) => form_page(&app, &session, id, values, errors, false, None).await,
         Save::Missing => Ok(not_found()),
         Save::Conflict(task) => {
@@ -351,6 +370,7 @@ async fn save(
 }
 
 enum Save {
+    Unauthorized,
     Invalid(Values),
     Missing,
     Conflict(Task),
@@ -359,6 +379,7 @@ enum Save {
 
 async fn persist(
     db: &SqlitePool,
+    user: &crate::users::User,
     id: Option<i64>,
     revision: Option<i64>,
     operation: Option<Uuid>,
@@ -366,11 +387,17 @@ async fn persist(
 ) -> Result<Save, AppError> {
     // Serialize writers so the receipt, version check and catalog changes are atomic.
     let mut tx = db.begin_with("BEGIN IMMEDIATE").await?;
+    let allowed: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM users WHERE id = ? AND version = ? AND temporary_until IS NULL)")
+        .bind(user.id).bind(user.version).fetch_one(&mut *tx).await?;
+    if !allowed {
+        return Ok(Save::Unauthorized);
+    }
     let operation = operation.map(|id| id.to_string());
     if let Some(key) = &operation
         && let Some((id, revision)) = sqlx::query_as::<_, (i64, i64)>(
-            "SELECT task_id, revision FROM task_mutations WHERE operation = ?",
+            "SELECT task_id, revision FROM task_mutations WHERE user_id = ? AND operation = ?",
         )
+        .bind(user.id)
         .bind(key)
         .fetch_optional(&mut *tx)
         .await?
@@ -378,10 +405,12 @@ async fn persist(
         return Ok(Save::Saved { id, revision });
     }
     if let Some(id) = id {
-        let current: Option<Task> = sqlx::query_as("SELECT * FROM tasks WHERE id = ?")
-            .bind(id)
-            .fetch_optional(&mut *tx)
-            .await?;
+        let current: Option<Task> =
+            sqlx::query_as("SELECT * FROM tasks WHERE id = ? AND owner_id = ?")
+                .bind(id)
+                .bind(user.id)
+                .fetch_optional(&mut *tx)
+                .await?;
         match current {
             None => return Ok(Save::Missing),
             Some(task) if revision != Some(task.revision) => return Ok(Save::Conflict(task)),
@@ -421,13 +450,13 @@ async fn persist(
         }
         let key = label.to_lowercase();
         if adding {
-            sqlx::query("INSERT INTO catalog (kind, key, label) VALUES (?, ?, ?) ON CONFLICT (kind, key) DO NOTHING")
-                .bind(kind).bind(&key).bind(label).execute(&mut *tx).await?;
+            sqlx::query("INSERT INTO user_catalog (user_id, kind, key, label) SELECT ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM catalog WHERE kind = ? AND key = ?) ON CONFLICT (user_id, kind, key) DO NOTHING")
+                .bind(user.id).bind(kind).bind(&key).bind(label).bind(kind).bind(&key).execute(&mut *tx).await?;
         }
         let canonical: Option<String> =
-            sqlx::query_scalar("SELECT label FROM catalog WHERE kind = ? AND key = ?")
+            sqlx::query_scalar("SELECT label FROM catalog WHERE kind = ? AND key = ? UNION ALL SELECT label FROM user_catalog WHERE user_id = ? AND kind = ? AND key = ?")
                 .bind(kind)
-                .bind(&key)
+                .bind(&key).bind(user.id).bind(kind).bind(&key)
                 .fetch_optional(&mut *tx)
                 .await?;
         if let Some(canonical) = canonical {
@@ -445,9 +474,9 @@ async fn persist(
         return Ok(Save::Invalid(errors));
     }
     let sql = if id.is_some() {
-        "UPDATE tasks SET activity_date=?, store=?, supervisor=?, zone=?, work=?, intervention=?, status=?, notes=?, revision=revision+1 WHERE id=? RETURNING id, revision"
+        "UPDATE tasks SET activity_date=?, store=?, supervisor=?, zone=?, work=?, intervention=?, status=?, notes=?, revision=revision+1 WHERE id=? AND owner_id=? RETURNING id, revision"
     } else {
-        "INSERT INTO tasks (activity_date, store, supervisor, zone, work, intervention, status, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id, revision"
+        "INSERT INTO tasks (activity_date, store, supervisor, zone, work, intervention, status, notes, owner_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id, revision"
     };
     let mut query = sqlx::query_as::<_, (i64, i64)>(sql).bind(date);
     for label in &labels {
@@ -457,10 +486,10 @@ async fn persist(
     if let Some(id) = id {
         query = query.bind(id);
     }
-    let (id, revision) = query.fetch_one(&mut *tx).await?;
+    let (id, revision) = query.bind(user.id).fetch_one(&mut *tx).await?;
     if let Some(key) = operation {
-        sqlx::query("INSERT INTO task_mutations (operation, task_id, revision) VALUES (?, ?, ?)")
-            .bind(key)
+        sqlx::query("INSERT INTO task_mutations (user_id, operation, task_id, revision) VALUES (?, ?, ?, ?)")
+            .bind(user.id).bind(key)
             .bind(id)
             .bind(revision)
             .execute(&mut *tx)
@@ -473,6 +502,7 @@ async fn persist(
 #[derive(Deserialize)]
 pub(crate) struct Mutation {
     operation: String,
+    account_id: i64,
     id: Option<i64>,
     revision: Option<i64>,
     values: Values,
@@ -485,14 +515,17 @@ pub(crate) async fn sync(
     Json(change): Json<Mutation>,
 ) -> Result<Response, AppError> {
     use serde_json::json;
-    if !auth::authenticated(&session).await? {
+    let Some(user) = auth::current(&app, &session).await? else {
         return Ok(StatusCode::UNAUTHORIZED.into_response());
-    }
+    };
     let csrf = headers
         .get("x-csrf-token")
         .and_then(|token| token.to_str().ok())
         .unwrap_or("");
     if !auth::valid_post(&app.auth, &headers, &session, csrf).await? {
+        return Ok(auth::forbidden());
+    }
+    if change.account_id != user.id {
         return Ok(auth::forbidden());
     }
     let Ok(operation) = Uuid::parse_str(&change.operation) else {
@@ -507,6 +540,7 @@ pub(crate) async fn sync(
     Ok(
         match persist(
             &app.db,
+            &user,
             change.id,
             change.revision,
             Some(operation),
@@ -526,6 +560,7 @@ pub(crate) async fn sync(
                 (StatusCode::CONFLICT, Json(json!({ "task": task }))).into_response()
             }
             Save::Missing => StatusCode::NOT_FOUND.into_response(),
+            Save::Unauthorized => StatusCode::UNAUTHORIZED.into_response(),
         },
     )
 }
@@ -534,27 +569,28 @@ pub(crate) async fn in_range(
     db: &SqlitePool,
     from: NaiveDate,
     through: NaiveDate,
+    owner: Option<i64>,
 ) -> Result<Vec<Task>, AppError> {
-    Ok(sqlx::query_as("SELECT * FROM tasks WHERE activity_date BETWEEN ? AND ? ORDER BY activity_date DESC, id DESC")
-        .bind(from.to_string()).bind(through.to_string()).fetch_all(db).await?)
+    Ok(sqlx::query_as("SELECT * FROM tasks WHERE activity_date BETWEEN ? AND ? AND (? IS NULL OR COALESCE(owner_id, 0) = ?) ORDER BY activity_date DESC, id DESC")
+        .bind(from.to_string()).bind(through.to_string()).bind(owner).bind(owner).fetch_all(db).await?)
 }
 
 pub(crate) async fn snapshot(
     State(app): State<App>,
     session: Session,
 ) -> Result<Response, AppError> {
-    if !auth::authenticated(&session).await? {
+    let Some(user) = auth::current(&app, &session).await? else {
         return Ok(StatusCode::UNAUTHORIZED.into_response());
-    }
+    };
     let date = today();
-    let tasks = in_range(&app.db, date - chrono::Days::new(29), date).await?;
-    let catalog = catalog(&app.db).await?;
+    let tasks = in_range(&app.db, date - chrono::Days::new(29), date, Some(user.id)).await?;
+    let catalog = catalog(&app.db, user.id).await?;
     // Refresh the session only after obtaining an authenticated snapshot.
     session
         .insert("snapshot_at", Utc::now().timestamp())
         .await?;
     Ok(Json(serde_json::json!({
-        "date": date.to_string(), "tasks": tasks, "catalog": catalog,
+        "date": date.to_string(), "tasks": tasks, "catalog": catalog, "account_id": user.id, "admin": user.admin(),
         "csrf": auth::csrf(&session).await?,
     }))
     .into_response())
@@ -563,6 +599,10 @@ pub(crate) async fn snapshot(
 #[derive(Template)]
 #[template(path = "today.html")]
 struct Today {
+    accounts: Vec<crate::users::Account>,
+    selected_account: String,
+    all_stores_url: String,
+    account_id: i64,
     csrf: String,
     date: String,
     tasks: Vec<Task>,
@@ -581,6 +621,7 @@ struct StoreCard {
 
 #[derive(Deserialize)]
 pub(crate) struct TodayQuery {
+    usuario: Option<String>,
     tienda: Option<String>,
 }
 
@@ -589,23 +630,48 @@ pub(crate) async fn home(
     session: Session,
     Query(query): Query<TodayQuery>,
 ) -> Result<Response, AppError> {
-    if !auth::authenticated(&session).await? {
+    let Some(user) = auth::current(&app, &session).await? else {
         return Ok(Redirect::to("/login").into_response());
-    }
+    };
     let date = today();
-    let mut tasks = in_range(&app.db, date, date).await?;
+    let Some(owner) = user.scope(query.usuario.as_deref()) else {
+        return Ok(auth::forbidden());
+    };
+    let mut tasks = in_range(&app.db, date, date, owner).await?;
     let mut counts = HashMap::new();
     for task in &tasks {
         *counts.entry(task.store.as_str()).or_insert(0) += 1;
     }
-    let stores: Vec<_> = catalog(&app.db)
+    let own_stores: Vec<_> = catalog(&app.db, user.id)
         .await?
         .into_iter()
         .filter(|row| row.kind == "store")
-        .map(|row| StoreCard {
-            count: counts.get(row.label.as_str()).copied().unwrap_or(0),
-            url: format!("/?tienda={}", urlencoding::encode(&row.label)),
-            label: row.label,
+        .map(|row| row.label)
+        .collect();
+    let mut labels = own_stores.clone();
+    if user.admin() {
+        labels.extend(counts.keys().map(|label| (*label).to_owned()));
+        labels.sort();
+        labels.dedup();
+    }
+    let selected_account = if user.admin() {
+        owner.map(|id| id.to_string()).unwrap_or_default()
+    } else {
+        String::new()
+    };
+    let all_stores_url = owner
+        .filter(|_| user.admin())
+        .map_or_else(|| "/".to_owned(), |id| format!("/?usuario={id}"));
+    let stores: Vec<_> = labels
+        .into_iter()
+        .map(|label| StoreCard {
+            count: counts.get(label.as_str()).copied().unwrap_or(0),
+            url: format!(
+                "{all_stores_url}{}tienda={}",
+                if all_stores_url == "/" { "?" } else { "&" },
+                urlencoding::encode(&label)
+            ),
+            label,
         })
         .collect();
     let selected = query
@@ -617,12 +683,16 @@ pub(crate) async fn home(
     if !selected.is_empty() {
         tasks.retain(|task| task.store == selected);
     }
-    let add_url = if selected.is_empty() {
+    let add_url = if !own_stores.contains(&selected) {
         "/tareas/nueva".into()
     } else {
         format!("/tareas/nueva?tienda={}", urlencoding::encode(&selected))
     };
     page(Today {
+        account_id: user.id,
+        accounts: crate::users::accounts(&app.db, user.admin()).await?,
+        selected_account,
+        all_stores_url,
         csrf: auth::csrf(&session).await?,
         date: format!(
             "{}, {} de {}",
@@ -650,6 +720,9 @@ pub(crate) async fn home(
 #[derive(Template)]
 #[template(path = "history.html")]
 struct History {
+    accounts: Vec<crate::users::Account>,
+    selected_account: String,
+    account_id: i64,
     csrf: String,
     tasks: Vec<Task>,
     number: i64,
@@ -665,6 +738,7 @@ struct History {
 
 #[derive(Deserialize)]
 pub(crate) struct HistoryQuery {
+    usuario: Option<String>,
     page: Option<i64>,
     edited: Option<bool>,
 }
@@ -674,12 +748,15 @@ pub(crate) async fn history(
     session: Session,
     Query(query): Query<HistoryQuery>,
 ) -> Result<Response, AppError> {
-    if !auth::authenticated(&session).await? {
+    let Some(user) = auth::current(&app, &session).await? else {
         return Ok(Redirect::to("/login").into_response());
-    }
+    };
+    let Some(owner) = user.scope(query.usuario.as_deref()) else {
+        return Ok(auth::forbidden());
+    };
     let number = query.page.unwrap_or(1).clamp(1, i64::MAX / PAGE_SIZE);
     let mut tasks =
-        sqlx::query_as("SELECT * FROM tasks ORDER BY activity_date DESC, id DESC LIMIT ? OFFSET ?")
+        sqlx::query_as("SELECT * FROM tasks WHERE (? IS NULL OR COALESCE(owner_id, 0) = ?) ORDER BY activity_date DESC, id DESC LIMIT ? OFFSET ?").bind(owner).bind(owner)
             .bind(PAGE_SIZE + 1)
             .bind((number - 1) * PAGE_SIZE)
             .fetch_all(&app.db)
@@ -688,6 +765,13 @@ pub(crate) async fn history(
     tasks.truncate(PAGE_SIZE as usize);
     let (from, through) = crate::exports::defaults();
     page(History {
+        account_id: user.id,
+        accounts: crate::users::accounts(&app.db, user.admin()).await?,
+        selected_account: if user.admin() {
+            owner.map(|id| id.to_string()).unwrap_or_default()
+        } else {
+            String::new()
+        },
         csrf: auth::csrf(&session).await?,
         tasks,
         number,
@@ -700,4 +784,12 @@ pub(crate) async fn history(
         pdf: false,
         error: "",
     })
+}
+
+#[derive(Template)]
+#[template(path = "task_detail.html")]
+struct TaskDetail {
+    account_id: i64,
+    csrf: String,
+    task: Task,
 }

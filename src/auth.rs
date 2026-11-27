@@ -21,7 +21,10 @@ use tokio::sync::Semaphore;
 use tower_sessions::Session;
 use uuid::Uuid;
 
-use crate::{App, AppError, page};
+use crate::{
+    App, AppError, page,
+    users::{self, User},
+};
 
 static PASSWORD_CHECKS: Semaphore = Semaphore::const_new(4);
 
@@ -30,6 +33,7 @@ pub(crate) struct Auth {
     pub production: bool,
     origin: String,
     hash: Arc<str>,
+    epoch: Uuid,
     attempts: Arc<Mutex<HashMap<IpAddr, (Instant, u8)>>>,
 }
 
@@ -115,6 +119,7 @@ impl Auth {
             production,
             origin,
             hash: hash.into(),
+            epoch: Uuid::new_v4(),
             attempts: Default::default(),
         })
     }
@@ -148,8 +153,50 @@ impl Auth {
     }
 }
 
-pub(crate) async fn authenticated(session: &Session) -> Result<bool, AppError> {
-    Ok(session.get("authenticated").await?.unwrap_or(false))
+async fn session_user(app: &App, session: &Session) -> Result<Option<User>, AppError> {
+    let Some((id, version, epoch)) = session.get::<(i64, i64, Option<String>)>("user").await?
+    else {
+        return Ok(None);
+    };
+    Ok(users::by_id(&app.db, id).await?.filter(|user| {
+        user.version == version
+            && (!user.admin() || epoch.as_deref() == Some(&app.auth.epoch.to_string()))
+    }))
+}
+
+pub(crate) async fn current(app: &App, session: &Session) -> Result<Option<User>, AppError> {
+    Ok(session_user(app, session)
+        .await?
+        .filter(|user| user.temporary_until.is_none()))
+}
+
+async fn start_session(app: &App, session: &Session, user: &User) -> Result<(), AppError> {
+    session.cycle_id().await?;
+    session.clear().await;
+    session
+        .insert(
+            "user",
+            (
+                user.id,
+                user.version,
+                user.admin().then(|| app.auth.epoch.to_string()),
+            ),
+        )
+        .await?;
+    Ok(())
+}
+
+pub(crate) async fn generate_hash(password: String) -> Result<Option<String>, AppError> {
+    let Ok(permit) = PASSWORD_CHECKS.try_acquire() else {
+        return Ok(None);
+    };
+    Ok(Some(
+        tokio::task::spawn_blocking(move || {
+            let _permit = permit;
+            hash_password(&password)
+        })
+        .await?,
+    ))
 }
 
 pub(crate) async fn csrf(session: &Session) -> Result<String, AppError> {
@@ -194,9 +241,20 @@ pub(crate) struct Credentials {
     password: String,
 }
 
-pub(crate) async fn login_page(session: Session) -> Result<Response, AppError> {
-    if authenticated(&session).await? {
-        return Ok(Redirect::to("/").into_response());
+pub(crate) async fn login_page(
+    State(app): State<App>,
+    session: Session,
+) -> Result<Response, AppError> {
+    if let Some(user) = session_user(&app, &session).await? {
+        if user.temporary_until.is_none() {
+            return Ok(Redirect::to("/").into_response());
+        }
+        if user
+            .temporary_until
+            .is_some_and(|expiry| expiry > chrono::Utc::now().timestamp())
+        {
+            return Ok(Redirect::to("/cuenta/contrasena").into_response());
+        }
     }
     page(Login {
         csrf: csrf(&session).await?,
@@ -244,14 +302,23 @@ pub(crate) async fn login(
         )
             .into_response());
     };
-    let hash = app.auth.hash.clone();
+    let user = users::by_username(&app.db, &form.username.trim().to_ascii_lowercase()).await?;
+    let hash = user
+        .as_ref()
+        .and_then(|user| user.password_hash.as_deref())
+        .map_or_else(|| app.auth.hash.clone(), Arc::from);
     let valid = form.password.len() <= 256
         && tokio::task::spawn_blocking(move || {
             let _permit = permit;
             verifies(&hash, &form.password)
         })
         .await?;
-    if !valid || form.username != "admin" {
+    let Some(user) = user.filter(|user| {
+        valid
+            && user
+                .temporary_until
+                .is_none_or(|expiry| expiry > chrono::Utc::now().timestamp())
+    }) else {
         let mut response = page(Login {
             csrf: form.csrf,
             username: &form.username,
@@ -259,12 +326,15 @@ pub(crate) async fn login(
         })?;
         *response.status_mut() = StatusCode::UNAUTHORIZED;
         return Ok(response);
-    }
+    };
 
-    session.cycle_id().await?;
-    session.remove::<String>("csrf").await?;
-    session.insert("authenticated", true).await?;
-    Ok(Redirect::to("/").into_response())
+    start_session(&app, &session, &user).await?;
+    let target = if user.temporary_until.is_some() {
+        "/cuenta/contrasena"
+    } else {
+        "/"
+    };
+    Ok(Redirect::to(target).into_response())
 }
 
 pub(crate) async fn logout(
@@ -285,4 +355,89 @@ pub(crate) async fn logout(
     }
     session.flush().await?;
     Ok(Redirect::to("/login").into_response())
+}
+
+#[derive(Template)]
+#[template(path = "password.html")]
+struct PasswordPage {
+    csrf: String,
+    error: &'static str,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct PasswordChange {
+    csrf: String,
+    password: String,
+    repeat: String,
+}
+
+pub(crate) async fn password_page(
+    State(app): State<App>,
+    session: Session,
+) -> Result<Response, AppError> {
+    if !session_user(&app, &session).await?.is_some_and(|user| {
+        user.temporary_until
+            .is_some_and(|expiry| expiry > chrono::Utc::now().timestamp())
+    }) {
+        return Ok(Redirect::to("/login").into_response());
+    }
+    page(PasswordPage {
+        csrf: csrf(&session).await?,
+        error: "",
+    })
+}
+
+pub(crate) async fn change_password(
+    State(app): State<App>,
+    session: Session,
+    headers: HeaderMap,
+    Form(form): Form<PasswordChange>,
+) -> Result<Response, AppError> {
+    let Some(user) = session_user(&app, &session).await?.filter(|user| {
+        user.temporary_until
+            .is_some_and(|expiry| expiry > chrono::Utc::now().timestamp())
+    }) else {
+        return Ok(Redirect::to("/login").into_response());
+    };
+    if !valid_post(&app.auth, &headers, &session, &form.csrf).await? {
+        return Ok(forbidden());
+    }
+    if form.password.chars().count() < 15
+        || form.password.len() > 256
+        || form.password != form.repeat
+    {
+        let mut response = page(PasswordPage {
+            csrf: form.csrf,
+            error: "Usa al menos 15 caracteres y un m?ximo de 256 bytes. Las dos contrase?as deben coincidir.",
+        })?;
+        *response.status_mut() = StatusCode::UNPROCESSABLE_ENTITY;
+        return Ok(response);
+    }
+    let temporary_hash = user
+        .password_hash
+        .clone()
+        .expect("temporary account has a hash");
+    let Ok(permit) = PASSWORD_CHECKS.try_acquire() else {
+        return Ok(StatusCode::SERVICE_UNAVAILABLE.into_response());
+    };
+    let hash = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        (!verifies(&temporary_hash, &form.password)).then(|| hash_password(&form.password))
+    })
+    .await?;
+    let Some(hash) = hash else {
+        let mut response = page(PasswordPage {
+            csrf: form.csrf,
+            error: "Elige una contrase?a distinta de la temporal.",
+        })?;
+        *response.status_mut() = StatusCode::UNPROCESSABLE_ENTITY;
+        return Ok(response);
+    };
+    let updated: Option<User> = sqlx::query_as("UPDATE users SET password_hash = ?, temporary_until = NULL, version = version + 1 WHERE id = ? AND version = ? AND temporary_until > ? RETURNING *")
+        .bind(hash).bind(user.id).bind(user.version).bind(chrono::Utc::now().timestamp()).fetch_optional(&app.db).await?;
+    let Some(updated) = updated else {
+        return Ok(Redirect::to("/login").into_response());
+    };
+    start_session(&app, &session, &updated).await?;
+    Ok(Redirect::to("/").into_response())
 }

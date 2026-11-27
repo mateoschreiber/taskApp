@@ -2,6 +2,7 @@ mod auth;
 mod charts;
 mod exports;
 mod tasks;
+mod users;
 
 use std::{env, error::Error, net::SocketAddr, time::Duration};
 
@@ -124,6 +125,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         SqliteConnectOptions::new()
             .filename(env::var("TASKAPP_DB").unwrap_or_else(|_| "taskapp.sqlite".into()))
             .create_if_missing(true)
+            .foreign_keys(true)
             .busy_timeout(Duration::from_secs(5)),
     )
     .await?;
@@ -165,6 +167,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .route("/exportar/descargar", get(exports::download))
         .route("/api/offline", get(tasks::snapshot))
         .route("/api/tareas/sync", axum::routing::post(tasks::sync))
+        .route("/usuarios", get(users::list).post(users::create))
+        .route(
+            "/usuarios/{id}/{action}",
+            axum::routing::post(users::update),
+        )
+        .route(
+            "/cuenta/contrasena",
+            get(auth::password_page).post(auth::change_password),
+        )
         .route("/login", get(auth::login_page).post(auth::login))
         .route("/salir", axum::routing::post(auth::logout))
         .route("/app.css", get(css))

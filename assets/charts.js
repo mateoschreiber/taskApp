@@ -6,6 +6,8 @@ const fromInput = form.elements.desde;
 const throughInput = form.elements.hasta;
 const status = document.querySelector('#chart-status');
 const grid = document.querySelector('#chart-grid');
+const account = Number(document.querySelector("[data-account-id]")?.dataset.accountId) || null;
+const owner = form.elements.usuario;
 const pdf = document.querySelector('#chart-pdf');
 const dialog = document.querySelector('#chart-detail');
 const detailRows = document.querySelector('#chart-detail-rows');
@@ -32,10 +34,17 @@ const hasRange = ['desde', 'hasta'].every(field => /^\d{4}-\d{2}-\d{2}$/.test(in
 if (hasRange) {
   fromInput.value = initial.get('desde');
   throughInput.value = initial.get('hasta');
+  if (owner) owner.value = initial.get('usuario') || '';
+}
+
+function rangeParams(from, through) {
+  const search = new URLSearchParams({ desde: from, hasta: through });
+  if (owner?.value) search.set("usuario", owner.value);
+  return search;
 }
 
 function remember(from, through) {
-  const search = new URLSearchParams({ desde: from, hasta: through });
+  const search = rangeParams(from, through);
   history.replaceState(null, '', location.pathname + '?' + search);
 }
 
@@ -132,8 +141,8 @@ async function load(implicit = false, preset) {
   try {
     if (!snapshotMode && navigator.onLine) {
       let response;
+      const params = rangeParams(from, through);
       try {
-        const params = new URLSearchParams({ desde: from, hasta: through });
         response = await fetch('/api/graficos?' + params, { signal: controller.signal });
       } catch (error) {
         if (error.name === 'AbortError') return;
@@ -144,19 +153,28 @@ async function load(implicit = false, preset) {
           return;
         }
         if (!response.ok) throw new Error('No se pudo consultar el período.');
-        const { charts, tasks } = await response.json();
+        const { charts, tasks, account_id } = await response.json();
         if (current !== generation) return;
+        if (account_id !== account) {
+          location.replace('/');
+          return;
+        }
         remember(from, through);
         status.textContent = tasks.length ? tasks.length + ' tareas en el período.' : 'No hay tareas en este período.';
         if (tasks.length) {
-          pdf.href = '/exportar/descargar?' + new URLSearchParams({ desde: from, hasta: through, formato: 'pdf' });
+          params.set('formato', 'pdf');
+          pdf.href = '/exportar/descargar?' + params;
           pdf.hidden = false;
           draw(charts, tasks);
         }
         return;
       }
     }
-    const snapshot = await chartSnapshot();
+    if (owner) {
+      owner.value = "";
+      owner.disabled = true;
+    }
+    const snapshot = await chartSnapshot(account);
     if (current !== generation) return;
     if (!snapshot) {
       status.textContent = 'Inicia sesión con conexión para actualizar la copia de tareas.';
@@ -218,6 +236,7 @@ window.addEventListener('online', () => {
     location.replace('/graficos' + location.search);
     return;
   }
+  if (owner) owner.disabled = false;
   load();
 });
 document.addEventListener('visibilitychange', () => {
@@ -229,11 +248,12 @@ window.addEventListener('pageshow', event => {
 if (typeof BroadcastChannel === 'function') {
   const channel = new BroadcastChannel('taskapp-device');
   channel.addEventListener('message', event => {
-    if (event.data === 'logout') {
+    const switched = account && event.data?.accountId && event.data.accountId !== account;
+    if (event.data === 'logout' || switched) {
       generation++;
       clearTimeout(expiryTimer);
       clear();
-      location.assign('/login');
+      location.replace(switched ? '/' : '/login');
     }
   });
 }

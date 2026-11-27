@@ -1,0 +1,12 @@
+{% if account_id == 1 %}
+<div class="field">
+  <label for="{{ filter_id }}">Cuenta</label>
+  <select id="{{ filter_id }}" name="usuario">
+    <option value="">Todas las cuentas</option>
+    {% for account in accounts %}
+    <option value="{{ account.id }}" {% if selected_account == account.id.to_string() %}selected{% endif %}>{{ account.name }} · {{ account.username }}</option>
+    {% endfor %}
+    <option value="0" {% if selected_account == "0" %}selected{% endif %}>Cuenta eliminada</option>
+  </select>
+</div>
+{% endif %}

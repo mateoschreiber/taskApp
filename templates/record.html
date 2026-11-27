@@ -1,10 +1,11 @@
 <li class="work-record">
-  <a class="record-link" href="/tareas/{{ task.id }}" aria-label="Editar {{ task.work }}, {{ task.store }}, {{ task.display_date() }}, {{ task.intervention }}, {{ task.status }}">
+  <a class="record-link" href="/tareas/{{ task.id }}" aria-label="Abrir {{ task.work }}, {{ task.store }}, {{ task.display_date() }}, {{ task.intervention }}, {{ task.status }}">
     <span class="record-icon"><svg class="ico" aria-hidden="true"><use href="#i-briefcase"></use></svg></span>
     <div class="record-body">
       <span class="record-store">{{ task.store }}</span>
       <h3>{{ task.work }}</h3>
       <p class="record-meta"><time datetime="{{ task.activity_date }}">{{ task.display_date() }}</time><span aria-hidden="true">·</span>{{ task.intervention }}</p>
+      {% if task.owner_id.is_none() %}<p class="record-meta">Cuenta eliminada</p>{% endif %}
     </div>
     <span class="status" data-state="{{ task.status.to_lowercase() }}">{{ task.status }}</span>
     <span class="record-chevron"><svg class="ico" aria-hidden="true"><use href="#i-chevron-right"></use></svg></span>

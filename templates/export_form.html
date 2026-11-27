@@ -5,6 +5,7 @@
     <div class="field"><label for="export-from">Desde</label><input id="export-from" name="desde" type="date" value="{{ from }}" required></div>
     <div class="field"><label for="export-through">Hasta</label><input id="export-through" name="hasta" type="date" value="{{ through }}" required></div>
   </div>
+  {% let filter_id = "export-user" %}{% include "account_filter.html" %}
   <fieldset class="export-formats">
     <legend>Formato de archivo</legend>
     <label><span class="file-symbol"><svg class="ico" aria-hidden="true"><use href="#i-sheet"></use></svg></span><span><strong>Excel</strong><small>Hoja editable · XLSX</small></span><input type="radio" name="formato" value="xlsx" {% if !pdf %}checked{% endif %}></label>

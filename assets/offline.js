@@ -15,35 +15,63 @@ const selectedPath = new URL(location.href);
 
 function openDb() {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open('taskapp-device', 1);
-    request.onupgradeneeded = () => request.result.createObjectStore('workspace');
-    request.onsuccess = () => resolve(request.result);
+    const request = indexedDB.open('taskapp-device', 2);
+    request.onupgradeneeded = event => {
+      const store = event.oldVersion ? request.transaction.objectStore('workspace')
+        : request.result.createObjectStore('workspace');
+      const legacy = store.get('current');
+      legacy.onsuccess = () => {
+        if (legacy.result?.queue?.length) store.put({ queue: legacy.result.queue }, 'account:1');
+        store.delete('current');
+      };
+    };
+    request.onsuccess = () => {
+      request.result.onversionchange = () => request.result.close();
+      resolve(request.result);
+    };
+    request.onblocked = () => reject(new Error('Cierra las pesta?as de la versi?n anterior.'));
     request.onerror = () => reject(request.error);
   });
 }
 
-function workspace(db, change) {
+function workspace(db, account, change, activate = false) {
   return new Promise((resolve, reject) => {
     const transaction = db.transaction('workspace', change ? 'readwrite' : 'readonly');
     const store = transaction.objectStore('workspace');
-    const request = store.get('current');
-    let value;
-    request.onsuccess = () => {
-      value = request.result || { queue: [] };
-      if (change) {
-        change(value);
-        store.put(value, 'current');
-      }
+    const active = store.get('active');
+    let value = { queue: [] };
+    active.onsuccess = () => {
+      const id = account || active.result;
+      if (!id) return;
+      const key = 'account:' + id;
+      const request = store.get(key);
+      request.onsuccess = () => {
+        const saved = request.result || { queue: [] };
+        if (activate && active.result && active.result !== id) {
+          const priorKey = 'account:' + active.result;
+          const previous = store.get(priorKey);
+          previous.onsuccess = () => {
+            if (previous.result) store.put({ queue: previous.result.queue }, priorKey);
+          };
+        }
+        if (change) {
+          change(saved);
+          store.put(saved, key);
+        }
+        if (activate) store.put(id, 'active');
+        if (!activate && change && !saved.expires && active.result === id) store.delete('active');
+        if (activate || active.result === id) value = { ...saved, accountId: id };
+      };
     };
     transaction.oncomplete = () => resolve(value);
     transaction.onabort = () => reject(transaction.error);
   });
 }
 
-export async function chartSnapshot() {
+export async function chartSnapshot(account) {
   const db = await openDb();
   try {
-    const state = await workspace(db);
+    const state = await workspace(db, account);
     return available(state) ? { ...state.snapshot, expires: state.expires } : null;
   } finally {
     db.close();
@@ -90,9 +118,11 @@ export async function startOffline(showConnection) {
   };
   let db;
   let state;
+  let account = Number(document.querySelector("[data-account-id]")?.dataset.accountId) || null;
   try {
     db = await openDb();
-    state = await workspace(db);
+    state = isLogin ? { queue: [] } : await workspace(db, account);
+    account ||= state.accountId;
   } catch {
     if (status) status.textContent = 'El almacenamiento local no está disponible en este navegador.';
     return;
@@ -103,9 +133,9 @@ export async function startOffline(showConnection) {
   let inLogout = false;
   let invalidSession = false;
 
-  async function change(update) {
-    state = await workspace(db, update);
-    channel?.postMessage('changed');
+  async function change(update, activate = false) {
+    state = await workspace(db, account, update, activate);
+    channel?.postMessage(activate ? { accountId: account } : 'changed');
   }
 
   function loadForm(values, context) {
@@ -237,14 +267,21 @@ export async function startOffline(showConnection) {
     }
     if (!response.ok) throw new Error('No se pudo actualizar la copia.');
     invalidSession = false;
-    const { csrf, ...data } = await response.json();
+    const { csrf, account_id, ...data } = await response.json();
+    if (account && account !== account_id) {
+      invalidSession = true;
+      if (device) location.reload();
+      else location.replace('/');
+      return null;
+    }
+    account = account_id;
     const first = new Date(data.date + 'T00:00:00Z');
     first.setUTCDate(first.getUTCDate() - 29);
     data.from = first.toISOString().slice(0, 10);
     await change(current => {
       current.snapshot = data;
       current.expires = Date.now() + HOURS_8;
-    });
+    }, true);
     return csrf;
   }
 
@@ -268,7 +305,7 @@ export async function startOffline(showConnection) {
       const response = await fetch('/api/tareas/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
-        body: JSON.stringify({ operation: entry.operation, id: entry.id, revision: entry.revision, values: entry.values }),
+        body: JSON.stringify({ account_id: account, operation: entry.operation, id: entry.id, revision: entry.revision, values: entry.values }),
       });
       if (response.ok) {
         const confirmed = await response.json();
@@ -343,7 +380,7 @@ export async function startOffline(showConnection) {
     const submit = event.submitter || form.querySelector('button[type=submit]');
     submit.disabled = true;
     try {
-      state = await workspace(db);
+      state = await workspace(db, account);
       if (!available(state)) {
         announce('La sesión local venció. Inicia sesión con conexión.', 'error-notice');
         return;
@@ -398,7 +435,7 @@ export async function startOffline(showConnection) {
     inLogout = true;
     try {
       await withLock(async () => {
-        state = await workspace(db);
+        state = await workspace(db, account);
         if (state.queue.length && !window.confirm('Hay cambios pendientes. ¿Descartarlos en este dispositivo y cerrar sesión?')) return;
         const response = await fetch('/salir', { method: 'POST', body: new URLSearchParams(new FormData(signout)) });
         if (!response.ok || !response.redirected || new URL(response.url).pathname !== '/login') throw new Error();
@@ -437,7 +474,11 @@ export async function startOffline(showConnection) {
       location.assign('/login');
       return;
     }
-    state = await workspace(db);
+    if (account && event.data?.accountId && event.data.accountId !== account) {
+      location.replace('/');
+      return;
+    }
+    state = await workspace(db, account);
     render();
   });
   window.addEventListener('online', runSync);
@@ -450,7 +491,7 @@ export async function startOffline(showConnection) {
   });
   window.addEventListener('pageshow', async event => {
     if (!event.persisted) return;
-    state = await workspace(db);
+    state = await workspace(db, account);
     render();
     runSync();
   });

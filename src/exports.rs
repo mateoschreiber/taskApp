@@ -22,6 +22,9 @@ static EXPORTS: Semaphore = Semaphore::const_new(2);
 #[derive(Template)]
 #[template(path = "export.html")]
 struct ExportPage {
+    account_id: i64,
+    accounts: Vec<crate::users::Account>,
+    selected_account: String,
     csrf: String,
     from: String,
     through: String,
@@ -31,6 +34,7 @@ struct ExportPage {
 
 #[derive(Deserialize)]
 pub(crate) struct Range {
+    usuario: Option<String>,
     desde: Option<String>,
     hasta: Option<String>,
     formato: Option<String>,
@@ -41,12 +45,22 @@ pub(crate) fn defaults() -> (String, String) {
     (today.with_day(1).unwrap().to_string(), today.to_string())
 }
 
-pub(crate) async fn form(session: Session) -> Result<Response, AppError> {
-    if !auth::authenticated(&session).await? {
+pub(crate) async fn form(
+    State(app): State<App>,
+    session: Session,
+    Query(range): Query<Range>,
+) -> Result<Response, AppError> {
+    let Some(user) = auth::current(&app, &session).await? else {
         return Ok(Redirect::to("/login").into_response());
+    };
+    if user.scope(range.usuario.as_deref()).is_none() {
+        return Ok(auth::forbidden());
     }
     let (from, through) = defaults();
     page(ExportPage {
+        account_id: user.id,
+        accounts: crate::users::accounts(&app.db, user.admin()).await?,
+        selected_account: range.usuario.clone().unwrap_or_default(),
         csrf: auth::csrf(&session).await?,
         from,
         through,
@@ -67,10 +81,13 @@ pub(crate) async fn download(
     session: Session,
     Query(range): Query<Range>,
 ) -> Result<Response, AppError> {
-    if !auth::authenticated(&session).await? {
+    let Some(user) = auth::current(&app, &session).await? else {
         return Ok(Redirect::to("/login").into_response());
-    }
+    };
     let view = ExportPage {
+        account_id: user.id,
+        accounts: crate::users::accounts(&app.db, user.admin()).await?,
+        selected_account: range.usuario.clone().unwrap_or_default(),
         csrf: auth::csrf(&session).await?,
         from: range.desde.unwrap_or_default(),
         through: range.hasta.unwrap_or_default(),
@@ -107,7 +124,10 @@ pub(crate) async fn download(
             "Hay exportaciones en curso. Intenta en unos segundos.",
         );
     };
-    let rows = tasks::in_range(&app.db, from, through).await?;
+    let Some(owner) = user.scope(range.usuario.as_deref()) else {
+        return Ok(auth::forbidden());
+    };
+    let rows = tasks::in_range(&app.db, from, through, owner).await?;
     if rows.is_empty() && view.pdf {
         return render_error(
             view,
