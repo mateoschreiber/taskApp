@@ -252,18 +252,8 @@ async fn modify(
     };
     if matches!(action, "crear" | "editar") {
         form.username = form.username.trim().to_ascii_lowercase();
-        if !(3..=32).contains(&form.username.len())
-            || !form
-                .username
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
-            || form.username == "admin"
-        {
-            return invalid(
-                view,
-                form,
-                "Usa de 3 a 32 letras sin acentos, números, guiones o guiones bajos. «admin» está reservado.",
-            );
+        if form.username.chars().count() < 8 {
+            return invalid(view, form, "El usuario debe tener al menos 8 caracteres.");
         }
     }
     let hash = if matches!(action, "crear" | "restablecer") {

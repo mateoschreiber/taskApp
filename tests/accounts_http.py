@@ -76,14 +76,17 @@ def check_accounts(base, database):
     assert other_admin.login("admin", "admin") == "/"
     assert Client(base).request("/usuarios", 303)[0] == "/login"
     temporary = "temporal para pruebas"
-    credentials = dict(username="visita", password=temporary, repeat=temporary)
+    username = "josé #01"
+    credentials = dict(username=username, password=temporary, repeat=temporary)
     admin.request("/usuarios", 403, csrf="incorrecto", **credentials)
+    _, short = admin.submit("/usuarios/nuevo", "/usuarios", 422, **dict(credentials, username="áéíóúñç"))
+    assert "al menos 8 caracteres" in short
     assert admin.submit("/usuarios/nuevo", "/usuarios", **credentials)[0] == "/usuarios"
     _, duplicate = admin.submit("/usuarios/nuevo", "/usuarios", 422, **credentials)
     assert "Ese usuario ya existe" in duplicate and temporary not in duplicate
 
     with closing(sqlite3.connect(database)) as conn, conn:
-        user_id, name = conn.execute("SELECT id, name FROM users WHERE username = 'visita'").fetchone()
+        user_id, name = conn.execute("SELECT id, name FROM users WHERE username = ?", (username,)).fetchone()
         assert not name
         conn.execute(
             "INSERT INTO tasks (activity_date, store, supervisor, zone, work, intervention, status, notes, owner_id)"
@@ -92,13 +95,16 @@ def check_accounts(base, database):
         )
     path = f"/usuarios/{user_id}"
     admin.request("/usuarios/1/eliminar", 403)
-    admin.submit(path + "/editar", path + "/editar", username="visita-editada")
-    assert user.login("visita-editada", temporary) == "/cuenta/contrasena"
+    admin.submit(path + "/editar", path + "/editar", 422, username="corto")
+    username += " nombre editado!" * 6
+    assert len(username) > 80
+    admin.submit(path + "/editar", path + "/editar", username=username)
+    assert user.login(username, temporary) == "/cuenta/contrasena"
     assert user.request("/cuenta", 303)[0] == "/login"
     password = "definitiva para pruebas"
     user.submit("/cuenta/contrasena", "/cuenta/contrasena", password=password, repeat=password)
     user.request("/usuarios", 403)
-    user.submit("/cuenta", path + "/eliminar", 403, username="visita-editada")
+    user.submit("/cuenta", path + "/eliminar", 403, username=username)
     user.submit("/cuenta", "/cuenta", name="Nombre personal")
     assert "Nombre personal" in admin.request("/usuarios")[1]
 
@@ -107,9 +113,9 @@ def check_accounts(base, database):
     assert user.request("/cuenta", 303)[0] == "/login"
     with closing(sqlite3.connect(database)) as conn, conn:
         conn.execute("UPDATE users SET temporary_until = 0 WHERE id = ?", (user_id,))
-    assert Client(base).login("visita-editada", reset, 401) is None
+    assert Client(base).login(username, reset, 401) is None
     admin.submit(path + "/eliminar", path + "/eliminar", 422, username="incorrecto")
-    admin.submit(path + "/eliminar", path + "/eliminar", username="visita-editada")
+    admin.submit(path + "/eliminar", path + "/eliminar", username=username)
     admin.request(path + "/editar", 404)
     assert "Tarea preservada" in admin.request("/historial?usuario=0")[1]
     with closing(sqlite3.connect(database)) as conn, conn:
