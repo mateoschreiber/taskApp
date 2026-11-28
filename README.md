@@ -1,96 +1,73 @@
-# taskApp
+# ![Marca de taskApp](assets/icon-32.png) taskApp
 
-![Bitácora de trabajo diario con una ilustración de tienda](docs/media/cover.png)
+**La bitácora de trabajo de tus tiendas.**
 
-Registra cada trabajo desde la tienda. Al cerrar la jornada, puedes consultar qué se hizo, qué quedó pendiente y sacar un informe para compartir. taskApp es una aplicación privada para móvil y escritorio.
+Registra lo que se hizo en cada sucursal, consulta lo que queda pendiente y comparte un informe de la jornada. taskApp es una aplicación de uso interno que instalas en tu propio servidor. Funciona en móvil y escritorio y permite seguir registrando tareas cuando se corta la conexión.
 
-[Puesta en marcha](#puesta-en-marcha) · [Jornada](#la-jornada-en-tienda) · [Gráficos](#gráficos) · [Informes](#del-historial-al-informe) · [Uso sin conexión](#llevarla-en-el-móvil) · [Servidor](#despliegue-en-servidor)
+![Rust](https://img.shields.io/badge/Rust-30363d?style=flat-square)
+![Axum](https://img.shields.io/badge/Axum-30363d?style=flat-square)
+![SQLite](https://img.shields.io/badge/SQLite-30363d?style=flat-square)
+![Docker](https://img.shields.io/badge/Docker-30363d?style=flat-square)
+![PWA](https://img.shields.io/badge/PWA-30363d?style=flat-square)
 
-## Puesta en marcha
+[Instalar](#instalación-rápida) · [Registrar tareas](#registro-de-tareas) · [Gráficos e informes](#gráficos-e-informes) · [Trabajo sin conexión](#trabajo-sin-conexión) · [Arquitectura](#arquitectura)
 
-Desde la raíz del proyecto, con Docker y Docker Compose instalados, ejecuta el siguiente comando.
+![Vista Hoy en escritorio y móvil, con indicadores y tareas de sucursales ficticias](docs/media/cover.png)
 
-```sh
+## Instalación rápida
+
+Necesitas Git, Docker y Docker Compose.
+
+```bash
+git clone https://github.com/mateoschreiber/taskApp.git
+cd taskApp
 docker compose up --build -d
 ```
 
-Abre **[taskApp en esta PC](http://127.0.0.1:8080)**. Para pruebas locales, usa `admin` como usuario y contraseña. Si necesitas otro puerto, define `TASKAPP_PORT` en `.env`. Esta configuración permite el acceso desde esa misma PC.
+Entra en [taskApp local](http://127.0.0.1:8080). En un volumen nuevo de pruebas, el usuario y la contraseña iniciales son `admin`. El servicio local escucha solo en esta PC. Puedes definir `TASKAPP_PORT` en `.env` si el puerto 8080 está ocupado. SQLite guarda los datos en el volumen `tasks`, que persiste al recrear el contenedor.
 
-La primera ejecución prepara un historial vacío y **33 opciones** tomadas de `Hoja1` del Excel original. Los nuevos registros se guardan en SQLite dentro del volumen `tasks` y se conservan al recrear el contenedor.
+Para un servidor compartido, usa el [despliegue de producción](docs/despliegue.md#producción), con HTTPS y una contraseña propia.
 
-## La jornada en tienda
+## Registro de tareas
 
-En **Hoy**, consulta cuántas tareas se registraron y en cuántas tiendas. Abre **Filtrar por tienda** para ver un local y toca **Nueva tarea** en la cabecera de la jornada. El formulario conserva la tienda elegida y propone la fecha de Paraguay. Escribe parte del nombre de un trabajo para buscarlo. Los campos de tienda, supervisor, zona, intervención y estado también sugieren opciones. Si necesitas una nueva, elige **Agregar** antes de guardar.
+En **Hoy** puedes ver los totales de la jornada, filtrar por tienda y abrir una tarea nueva con esa sucursal seleccionada. **Historial** muestra los registros del más reciente al más antiguo, con paginación y filtro por cuenta para el administrador.
 
-<picture>
-  <source media="(max-width: 600px)" srcset="docs/media/mobile.png">
-  <img src="docs/media/desktop.png" alt="Pantalla Hoy con la actividad de la jornada, el acceso a Nueva tarea y el filtro de tiendas.">
-</picture>
+1. Selecciona una sucursal en **Nueva tarea**.
+2. Completa los datos generales. El formulario propone la fecha de Paraguay.
+3. Completa el trabajo, el tipo de intervención, el estado y las observaciones del primer bloque. Usa **Agregar otra tarea** para sumar bloques de la misma sucursal.
+4. Guarda el lote con un solo botón. Puedes registrar entre 1 y 100 tareas.
 
-[Ver captura móvil](docs/media/mobile.png) · [Ver captura de escritorio](docs/media/desktop.png)
+El servidor valida todos los bloques y guarda el lote completo en una transacción SQLite. Cada tarea tiene su propio registro y comparte los datos generales del lote. Si se reintenta el mismo envío tras una interrupción, el servidor devuelve los registros ya creados. Los catálogos ofrecen sugerencias al escribir y permiten agregar valores propios.
 
-## Gráficos
+[Hoy en escritorio](docs/media/desktop.png) · [Hoy en móvil](docs/media/mobile.png) · [Formulario con dos tareas](docs/media/task-batch.png)
 
-Elige el mes en curso, los últimos 7 o 30 días o un rango personalizado. Consulta la evolución de tareas, la actividad por tienda, los estados, los trabajos más frecuentes y los tipos de intervención. Toca una barra para ver las tareas que representa. El PDF descarga los cinco gráficos y el detalle de todo el rango.
+## Gráficos e informes
 
-![Gráficos de taskApp en escritorio con datos ficticios y barras interactivas.](docs/media/charts-desktop.png)
+**Gráficos** resume el total de tareas, las tiendas con actividad y los recuentos por estado. Explora la evolución por fecha, las tiendas, los estados, los trabajos más frecuentes y los tipos de intervención. Selecciona una barra para abrir los registros que la componen. La evolución se agrupa por día, semana, mes o año según el período. Puedes consultar el mes en curso, los últimos 7 o 30 días o un rango propio. El administrador también puede filtrar por cuenta.
 
-[Ver gráficos en móvil](docs/media/charts-mobile.png) · [Ver el informe de muestra](docs/media/report.png)
+![Gráficos en escritorio con evolución de tareas y distribución por estado, con datos ficticios](docs/media/charts-desktop.png)
 
-## Del historial al informe
+[Ver gráficos en móvil](docs/media/charts-mobile.png)
 
-En **Historial → Exportar**, elige el primer y el último día. La descarga incluye ambas fechas y los registros guardados de todas las tiendas.
+Desde **Historial → Exportar**, elige el período y el formato. Ambos extremos del rango se incluyen. El administrador puede exportar todas las cuentas o una sola. En **Gráficos**, también puedes descargar en PDF el período consultado en línea si tiene actividad.
 
-| Formato | Qué contiene |
+| Formato | Contenido |
 | --- | --- |
-| **Excel · .xlsx** | Una hoja **Tareas** con los campos del registro y las fechas del rango seleccionado. |
-| **PDF · A4** | Un informe listo para compartir, con cinco gráficos, trabajos agrupados por fecha y observaciones completas. |
+| [Excel · XLSX](docs/media/excel.png) | Hoja editable **Actividades** con encabezados, autofiltro y filas superiores inmovilizadas. |
+| [PDF · A4](docs/media/report.png) | Informe con período, responsable o equipo, fecha de generación, resumen ejecutivo, distribución por estado, registro y observaciones. |
 
-<details>
-<summary><strong>Ver una página del informe PDF</strong></summary>
+## Trabajo sin conexión
 
-![Página de muestra del informe de trabajos realizados con datos ficticios.](docs/media/report.png)
+Abre la app con conexión e inicia sesión antes de ir a tienda. La PWA guarda el catálogo y las tareas propias de los últimos 30 días. La copia se puede usar durante ocho horas desde su última actualización.
 
-</details>
+- En **Dispositivo** puedes crear tareas, guardar lotes y editar registros disponibles en la copia. Los envíos pendientes se conservan por cuenta y se sincronizan con la app abierta al recuperar la conexión.
+- **Gráficos** consulta las tareas confirmadas que estén dentro del rango de la copia. El historial completo, las exportaciones y los datos de otras cuentas requieren conexión.
+- Puedes instalar la PWA desde el menú de Chromium o, en Safari para iPhone, desde **Compartir → Agregar a pantalla de inicio**.
 
-## Llevarla en el móvil
+Consulta [Usuarios y permisos](docs/usuarios.md) para administrar cuentas, revisar quién puede ver los registros y preparar un navegador compartido.
 
-Abre la URL **HTTPS** del servidor desde el teléfono. En Chromium, elige la opción de instalar la aplicación en el menú del navegador. En Safari para iPhone, usa **Compartir → Agregar a pantalla de inicio**.
+## Arquitectura
 
-| Durante la jornada | Qué sucede |
-| --- | --- |
-| **Preparar la visita** | Al entrar con conexión se descargan los catálogos y las tareas de los últimos 30 días. La copia permite trabajar hasta ocho horas desde la última actualización. |
-| **Trabajar sin señal** | Puedes registrar tareas y editar las que ya están en el dispositivo. En Gráficos puedes explorar las tareas confirmadas de la copia local. El historial completo y las exportaciones requieren conexión. |
-| **Volver a tener señal** | Con la app abierta, los cambios se envían automáticamente. En **Dispositivo** puedes reintentar el envío o comparar dos versiones de una tarea y decidir cuál conservar. |
+**Rust y Axum** sirven HTML con plantillas **Askama**. El navegador usa JavaScript nativo, un *Service Worker* para abrir las vistas offline e **IndexedDB** para la copia local y la cola. **SQLite** almacena las tareas, las cuentas y las sesiones. El servidor genera Excel con **rust_xlsxwriter** y PDF con **Typst**. Docker empaqueta la aplicación y sus herramientas de informes.
 
-Si vence la sesión, vuelve a entrar con conexión para recuperar los cambios pendientes. **Cerrar sesión** borra los datos de ese dispositivo y pide confirmación si quedan cambios por enviar.
-
-## Usuarios
-
-La cuenta **admin** gestiona el acceso desde **Cuenta → Usuarios**. Cada persona trabaja con sus propias tareas y sugerencias. Admin puede consultar y exportar el conjunto. Consulta la [guía de usuarios, permisos y migración](docs/usuarios.md).
-
-## Despliegue en servidor
-
-1. Crea un túnel de Cloudflare y dirige el dominio público a `http://app:8080`. Activa la redirección a HTTPS y guarda el token del túnel en `secrets/tunnel_token`.
-2. Desde la raíz, ejecuta `cargo run --locked -- hash-password`. Elige una contraseña de al menos 15 caracteres. Guarda el hash Argon2id que imprime en `secrets/password_hash`, en UTF-8 sin BOM, y concede lectura al usuario del contenedor correspondiente. taskApp usa el UID `65532`.
-3. En `.env`, asigna el dominio a `TASKAPP_ORIGIN`, por ejemplo `https://tareas.ejemplo.com`, sin barra final. Inicia los servicios.
-
-   ```sh
-   docker compose -f compose.prod.yaml up --build -d
-   ```
-
-4. Abre el dominio por HTTPS e inicia sesión como `admin` con la contraseña elegida.
-
-> [!IMPORTANT]
-> Conserva fuera de Git el Excel original, `.env`, los secretos y la base de trabajo. Para trasladar la instalación, detén la app antes de copiar el volumen completo de SQLite.
-
-## Desarrollo
-
-El servidor usa **Rust, Axum y Askama**. SQLite conserva las tareas y sus revisiones. La PWA guarda la copia de trabajo en IndexedDB. El servidor genera Excel con **rust_xlsxwriter** y PDF con **Typst**. Docker incluye Typst. Para exportar PDF al ejecutar con Cargo, instala Typst y déjalo disponible en el `PATH`.
-
-```sh
-cargo fmt --check
-cargo clippy --locked --all-targets -- -D warnings
-```
-
-Para verificar los flujos de cuentas con una base temporal, compila con `cargo build --locked` y ejecuta `python tests/accounts_http.py target/debug/taskapp` (usa `.exe` en Windows).
+[Diagrama y arquitectura](docs/arquitectura.md) · [Despliegue y respaldos](docs/despliegue.md) · [Desarrollo y pruebas](docs/desarrollo.md) · [Cambios](CHANGELOG.md) · [Seguridad](SECURITY.md)
