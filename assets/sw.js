@@ -1,4 +1,4 @@
-const CACHE = 'taskapp-static-v6';
+const CACHE = 'taskapp-static-v7';
 const SHELL = '/sin-conexion';
 const CHARTS = '/graficos/sin-conexion';
 // Bump the cache version when replacing the artwork or typeface.

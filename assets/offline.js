@@ -99,7 +99,7 @@ function button(label, action, style = 'quiet') {
   return node;
 }
 
-export async function startOffline(showConnection) {
+export async function startOffline(showConnection, batch) {
   const message = document.querySelector('#app-message');
   const device = document.querySelector('#device');
   const deviceLogin = document.querySelector('#device-login');
@@ -119,40 +119,152 @@ export async function startOffline(showConnection) {
   let db;
   let state;
   let account = Number(document.querySelector("[data-account-id]")?.dataset.accountId) || null;
-  try {
-    db = await openDb();
-    state = isLogin ? { queue: [] } : await workspace(db, account);
-    account ||= state.accountId;
-  } catch {
-    if (status) status.textContent = 'El almacenamiento local no está disponible en este navegador.';
-    return;
-  }
-  const channel = typeof BroadcastChannel === 'function' ? new BroadcastChannel('taskapp-device') : null;
   let editing = null;
   let running;
   let inLogout = false;
   let invalidSession = false;
+  let operation;
+  let renewToken = false;
+  const ready = (async () => {
+    try {
+      db = await openDb();
+      state = isLogin ? { queue: [] } : await workspace(db, account);
+      account ||= state.accountId;
+      return true;
+    } catch {
+      if (status) status.textContent = 'El almacenamiento local no está disponible en este navegador.';
+      return false;
+    }
+  })();
+
+  function sendBatch(entry, csrf) {
+    const { operation, shared, tasks } = entry;
+    return fetch('/api/tareas/lote', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+      body: JSON.stringify({ account_id: account, operation, shared, tasks }),
+      signal: AbortSignal.timeout?.(12_000),
+    });
+  }
+
+  batch?.setSubmit(async ({ shared, tasks }) => {
+    if (inLogout) throw new Error();
+    operation ||= crypto.randomUUID();
+    const entry = { operation, shared, tasks, values: { ...shared, ...tasks[0] }, state: 'queued' };
+    const localReady = await ready;
+    const previous = device && editing?.operation;
+    if (!previous && navigator.onLine) {
+      let csrf = form.elements.csrf.value;
+      if (device) csrf = await snapshot().catch(() => null);
+      else if (renewToken) {
+        const session = await fetch('/api/offline', { cache: 'no-store', signal: AbortSignal.timeout?.(12_000) })
+          .then(response => response.ok && response.json()).catch(() => null);
+        if (session?.account_id !== account) {
+          batch.say('Inicia sesión con la misma cuenta para volver a intentar el guardado.');
+          return;
+        }
+        csrf = form.elements.csrf.value = session.csrf;
+        renewToken = false;
+      }
+      if (csrf) {
+        let response;
+        try {
+          response = await sendBatch(entry, csrf);
+        } catch {
+          batch.requireRetry();
+          showConnection(false);
+        }
+        if (response?.ok) {
+          finishBatch(shared, tasks.length, true);
+          if (localReady) await snapshot().then(render).catch(() => {});
+          return;
+        }
+        if (response?.status === 422) {
+          const { errors } = await response.json();
+          operation = null;
+          batch.unlock();
+          batch.fieldErrors(errors);
+          batch.say('Revisa los campos marcados. No se guardó ninguna tarea.');
+          return;
+        }
+        if (response) {
+          if (response.status >= 500) batch.requireRetry();
+          renewToken = response.status === 401 || response.status === 403;
+          batch.say(renewToken
+            ? 'La sesión cambió. Inicia sesión en otra pestaña y vuelve a intentarlo.'
+            : 'No se pudo confirmar el guardado. Tus datos siguen aquí. Vuelve a intentarlo.');
+          return;
+        }
+      }
+    }
+    if (!localReady) {
+      throw new Error();
+    }
+    await change(current => {
+      if (!available(current)) return;
+      if (previous) {
+        const old = current.queue.find(item => item.operation === previous);
+        if (!old || old.state === 'sending') return;
+        current.queue = current.queue.filter(item => item.operation !== previous);
+      }
+      if (!current.queue.some(item => item.operation === operation)) current.queue.push(entry);
+    });
+    if (!state.queue.some(item => item.operation === operation)) {
+      batch.say(previous ? 'El cambio pendiente ya se está sincronizando. Tus datos siguen en el formulario.'
+        : 'El guardado local requiere una sesión preparada. Tus datos siguen en el formulario.');
+      return;
+    }
+    finishBatch(shared, tasks.length, false);
+    render();
+    runSync();
+  });
+
+  if (!await ready) return;
+  const channel = typeof BroadcastChannel === 'function' ? new BroadcastChannel('taskapp-device') : null;
+
+  function finishBatch(shared, count, confirmed) {
+    operation = null;
+    if (device) {
+      loadForm({ ...shared, supervisor: 'FLORENCIA SILVERO', supervisor_new: '', zone: 'INTERIOR', zone_new: '' }, null);
+    } else {
+      batch.reset();
+    }
+    announce(confirmed
+      ? (count === 1 ? 'Tarea guardada correctamente.' : count + ' tareas guardadas correctamente.')
+      : (count === 1 ? 'Tarea guardada en el dispositivo, pendiente de sincronización.'
+        : count + ' tareas guardadas en el dispositivo, pendientes de sincronización.'));
+    message.tabIndex = -1;
+    message.focus({ preventScroll: true });
+    message.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+  }
 
   async function change(update, activate = false) {
     state = await workspace(db, account, update, activate);
     channel?.postMessage(activate ? { accountId: account } : 'changed');
   }
 
-  function loadForm(values, context) {
+  function loadForm(values, context, tasks) {
     editing = context;
+    operation = null;
+    batch?.reset(tasks?.length || 1, !context || Boolean(tasks));
     form.elements.date.value = values.date || asuncionToday();
-    form.elements.notes.value = values.notes || '';
+    batch?.rows().forEach((row, index) => {
+      row.querySelector('textarea').value = (tasks?.[index] || values).notes || '';
+    });
     for (const field of form.querySelectorAll('[data-choice]')) {
       const kind = field.querySelector('select').name;
+      const index = batch?.rows().indexOf(field.closest('[data-task-block]'));
+      const selected = tasks?.[index] || values;
       field.dispatchEvent(new CustomEvent('taskapp-values', { detail: {
         suggestions: state.snapshot.catalog.filter(option => option.kind === kind).map(option => option.label),
-        queued: state.queue.filter(entry => entry.values[kind] === ADD).map(entry => entry.values[kind + '_new']),
-        selected: values[kind] === ADD ? '' : values[kind],
-        newValue: values[kind] === ADD ? values[kind + '_new'] : '',
+        queued: [...new Set(state.queue.flatMap(entry => (entry.tasks && index >= 0 ? entry.tasks : [entry.values])
+          .filter(item => item[kind] === ADD).map(item => item[kind + '_new'])))],
+        selected: selected[kind] === ADD ? '' : selected[kind],
+        newValue: selected[kind] === ADD ? selected[kind + '_new'] : '',
       }}));
     }
-    form.querySelector('[data-submit-label]').textContent = context ? 'Guardar cambios' : 'Guardar tarea';
-    document.querySelector('#device-form-title').textContent = context ? 'Editar tarea' : 'Nueva tarea';
+    document.querySelector('#device-form-title').textContent = context
+      ? (tasks ? 'Revisar tareas' : 'Editar tarea') : 'Nueva tarea';
     form.querySelector('.device-compare')?.remove();
     if (context?.remote) {
       const compare = element('div', '', 'device-compare conflict');
@@ -165,7 +277,8 @@ export async function startOffline(showConnection) {
       form.prepend(compare);
     }
     form.hidden = false;
-    form.elements.date.focus();
+    batch?.refresh();
+    (form.querySelector('.task-store [role=combobox]') || form.elements.date).focus();
     form.scrollIntoView({ block: 'start' });
   }
 
@@ -173,9 +286,11 @@ export async function startOffline(showConnection) {
     form?.querySelector('.device-compare')?.remove();
     if (form && device) form.hidden = true;
     editing = null;
+    batch?.refresh();
   }
 
   function showNew() {
+    if (!batch?.canLeave()) return;
     loadForm({
       date: selectedPath.searchParams.get('fecha') || asuncionToday(),
       store: selectedPath.searchParams.get('tienda') || '',
@@ -207,15 +322,22 @@ export async function startOffline(showConnection) {
     const pendingIds = new Set(state.queue.map(entry => entry.id));
     for (const entry of state.queue) {
       const section = element('article', '', 'panel device-record');
-      section.append(element('h3', textValue(entry.values, 'work')));
+      section.append(element('h3', entry.tasks?.length > 1 ? entry.tasks.length + ' tareas' : textValue(entry.values, 'work')));
       const summary = textValue(entry.values, 'store') + ' · ' + entry.values.date;
       const note = entry.state === 'conflict' ? 'Requiere revisión'
         : entry.state === 'invalid' ? 'Requiere corrección' : 'Pendiente de sincronizar';
       section.append(element('p', summary, 'record-meta'), element('p', note, 'status'));
-      if (entry.errors) section.append(element('p', Object.values(entry.errors).join(' '), 'field-error'));
+      if (entry.errors) {
+        const messages = Array.isArray(entry.errors) ? entry.errors.flatMap(Object.values) : Object.values(entry.errors);
+        section.append(element('p', [...new Set(messages)].join(' '), 'field-error'));
+      }
       if (entry.state !== 'sending') {
         const context = { id: entry.id, revision: entry.remote?.revision ?? entry.revision, operation: entry.operation, remote: entry.remote };
-        section.append(button(entry.remote ? 'Revisar mi edición' : 'Editar', () => loadForm(entry.values, context)));
+        section.append(button(entry.remote ? 'Revisar mi edición' : 'Editar', () => {
+          if (!batch?.canLeave()) return;
+          loadForm(entry.values, context, entry.tasks);
+          if (Array.isArray(entry.errors)) batch?.fieldErrors(entry.errors);
+        }));
         section.append(button(entry.remote ? 'Usar versión guardada' : 'Descartar', async () => {
           if (!window.confirm('¿Descartar la edición de este dispositivo?')) return;
           await change(current => {
@@ -246,7 +368,9 @@ export async function startOffline(showConnection) {
     for (const task of saved) {
       const section = element('article', '', 'panel device-record');
       section.append(element('h3', task.work), element('p', task.store + ' · ' + task.activity_date, 'record-meta'));
-      section.append(button('Editar', () => loadForm(toValues(task), { id: task.id, revision: task.revision })));
+      section.append(button('Editar', () => {
+        if (batch?.canLeave()) loadForm(toValues(task), { id: task.id, revision: task.revision });
+      }));
       list.append(section);
     }
   }
@@ -302,7 +426,7 @@ export async function startOffline(showConnection) {
       });
       const entry = state.queue.find(item => item.operation === candidate.operation);
       if (entry?.state !== 'sending') continue;
-      const response = await fetch('/api/tareas/sync', {
+      const response = entry.tasks ? await sendBatch(entry, csrf) : await fetch('/api/tareas/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
         body: JSON.stringify({ account_id: account, operation: entry.operation, id: entry.id, revision: entry.revision, values: entry.values }),
@@ -312,11 +436,16 @@ export async function startOffline(showConnection) {
         results.set(entry.operation, confirmed);
         await change(current => {
           current.queue = current.queue.filter(item => item.operation !== entry.operation);
-          const saved = { ...toValuesFromEntry(entry), id: confirmed.id, revision: confirmed.revision };
           if (current.snapshot) {
-            current.snapshot.tasks = current.snapshot.tasks.filter(task => task.id !== saved.id);
-            if (saved.activity_date >= current.snapshot.from && saved.activity_date <= current.snapshot.date) {
-              current.snapshot.tasks.unshift(saved);
+            const records = entry.tasks ? confirmed.tasks.map((receipt, index) => ({
+              ...toValuesFromEntry({ values: { ...entry.shared, ...entry.tasks[index] } }), ...receipt,
+            })) : [{ ...toValuesFromEntry(entry), ...confirmed }];
+            const ids = new Set(records.map(task => task.id));
+            current.snapshot.tasks = current.snapshot.tasks.filter(task => !ids.has(task.id));
+            for (const saved of records) {
+              if (saved.activity_date >= current.snapshot.from && saved.activity_date <= current.snapshot.date) {
+                current.snapshot.tasks.unshift(saved);
+              }
             }
           }
         });
@@ -357,6 +486,7 @@ export async function startOffline(showConnection) {
   }
 
   if (form) form.addEventListener('submit', async event => {
+    if (event.defaultPrevented) return;
     if (inLogout) { event.preventDefault(); return; }
     if (!device && !available(state)) {
       if (navigator.onLine && !invalidSession) return;
@@ -431,7 +561,7 @@ export async function startOffline(showConnection) {
 
   if (signout) signout.addEventListener('submit', async event => {
     event.preventDefault();
-    if (inLogout) return;
+    if (inLogout || (batch && !batch.canLeave())) return;
     inLogout = true;
     try {
       await withLock(async () => {
@@ -445,6 +575,7 @@ export async function startOffline(showConnection) {
           current.queue = [];
         });
         channel?.postMessage('logout');
+        batch?.reset();
         location.assign('/login');
       });
     } catch {
@@ -461,6 +592,7 @@ export async function startOffline(showConnection) {
 
   document.querySelector('#device-new')?.addEventListener('click', showNew);
   document.querySelector('#device-cancel')?.addEventListener('click', () => {
+    if (!batch?.canLeave()) return;
     closeForm();
     document.querySelector('#device-new').focus();
   });

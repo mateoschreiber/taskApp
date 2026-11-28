@@ -123,6 +123,7 @@ async fn find_task(db: &SqlitePool, id: i64, owner: Option<i64>) -> Result<Optio
 #[template(path = "task.html")]
 struct TaskPage {
     account_id: i64,
+    batch_limit: usize,
     csrf: String,
     editing: bool,
     action: String,
@@ -205,6 +206,7 @@ fn task_page(
     let has_errors = !errors.is_empty();
     TaskPage {
         account_id: 0,
+        batch_limit: BATCH_LIMIT,
         offline: csrf.is_empty(),
         csrf,
         editing: id.is_some(),
@@ -387,17 +389,38 @@ async fn persist(
 ) -> Result<Save, AppError> {
     // Serialize writers so the receipt, version check and catalog changes are atomic.
     let mut tx = db.begin_with("BEGIN IMMEDIATE").await?;
-    let allowed: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM users WHERE id = ? AND version = ? AND temporary_until IS NULL)")
-        .bind(user.id).bind(user.version).fetch_one(&mut *tx).await?;
-    if !allowed {
+    if !can_write(&mut tx, user).await? {
         return Ok(Save::Unauthorized);
     }
     let operation = operation.map(|id| id.to_string());
-    if let Some(key) = &operation
+    let result = persist_task(&mut tx, user.id, id, revision, operation.as_deref(), values).await?;
+    if matches!(result, Save::Saved { .. }) {
+        tx.commit().await?;
+    }
+    Ok(result)
+}
+
+async fn can_write(
+    tx: &mut sqlx::SqliteConnection,
+    user: &crate::users::User,
+) -> Result<bool, AppError> {
+    Ok(sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM users WHERE id = ? AND version = ? AND temporary_until IS NULL)")
+        .bind(user.id).bind(user.version).fetch_one(tx).await?)
+}
+
+async fn persist_task(
+    tx: &mut sqlx::SqliteConnection,
+    user_id: i64,
+    id: Option<i64>,
+    revision: Option<i64>,
+    operation: Option<&str>,
+    values: &Values,
+) -> Result<Save, AppError> {
+    if let Some(key) = operation
         && let Some((id, revision)) = sqlx::query_as::<_, (i64, i64)>(
             "SELECT task_id, revision FROM task_mutations WHERE user_id = ? AND operation = ?",
         )
-        .bind(user.id)
+        .bind(user_id)
         .bind(key)
         .fetch_optional(&mut *tx)
         .await?
@@ -408,7 +431,7 @@ async fn persist(
         let current: Option<Task> =
             sqlx::query_as("SELECT * FROM tasks WHERE id = ? AND owner_id = ?")
                 .bind(id)
-                .bind(user.id)
+                .bind(user_id)
                 .fetch_optional(&mut *tx)
                 .await?;
         match current {
@@ -451,12 +474,12 @@ async fn persist(
         let key = label.to_lowercase();
         if adding {
             sqlx::query("INSERT INTO user_catalog (user_id, kind, key, label) SELECT ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM catalog WHERE kind = ? AND key = ?) ON CONFLICT (user_id, kind, key) DO NOTHING")
-                .bind(user.id).bind(kind).bind(&key).bind(label).bind(kind).bind(&key).execute(&mut *tx).await?;
+                .bind(user_id).bind(kind).bind(&key).bind(label).bind(kind).bind(&key).execute(&mut *tx).await?;
         }
         let canonical: Option<String> =
             sqlx::query_scalar("SELECT label FROM catalog WHERE kind = ? AND key = ? UNION ALL SELECT label FROM user_catalog WHERE user_id = ? AND kind = ? AND key = ?")
                 .bind(kind)
-                .bind(&key).bind(user.id).bind(kind).bind(&key)
+                .bind(&key).bind(user_id).bind(kind).bind(&key)
                 .fetch_optional(&mut *tx)
                 .await?;
         if let Some(canonical) = canonical {
@@ -470,7 +493,6 @@ async fn persist(
     }
 
     if !errors.is_empty() {
-        tx.rollback().await?;
         return Ok(Save::Invalid(errors));
     }
     let sql = if id.is_some() {
@@ -486,17 +508,110 @@ async fn persist(
     if let Some(id) = id {
         query = query.bind(id);
     }
-    let (id, revision) = query.bind(user.id).fetch_one(&mut *tx).await?;
+    let (id, revision) = query.bind(user_id).fetch_one(&mut *tx).await?;
     if let Some(key) = operation {
         sqlx::query("INSERT INTO task_mutations (user_id, operation, task_id, revision) VALUES (?, ?, ?, ?)")
-            .bind(user.id).bind(key)
+            .bind(user_id).bind(key)
             .bind(id)
             .bind(revision)
             .execute(&mut *tx)
             .await?;
     }
-    tx.commit().await?;
     Ok(Save::Saved { id, revision })
+}
+
+// Bound the write transaction and stay below Axum's JSON body limit with full notes.
+const BATCH_LIMIT: usize = 100;
+
+#[derive(Deserialize)]
+pub(crate) struct TaskBatch {
+    operation: String,
+    account_id: i64,
+    shared: Values,
+    tasks: Vec<Values>,
+}
+
+#[derive(Serialize, FromRow)]
+struct Receipt {
+    id: i64,
+    revision: i64,
+}
+
+pub(crate) async fn create_batch(
+    State(app): State<App>,
+    session: Session,
+    headers: HeaderMap,
+    Json(batch): Json<TaskBatch>,
+) -> Result<Response, AppError> {
+    use serde_json::json;
+    let Some(user) = auth::current(&app, &session).await? else {
+        return Ok(StatusCode::UNAUTHORIZED.into_response());
+    };
+    let csrf = headers
+        .get("x-csrf-token")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("");
+    if batch.account_id != user.id || !auth::valid_post(&app.auth, &headers, &session, csrf).await?
+    {
+        return Ok(auth::forbidden());
+    }
+    if !(1..=BATCH_LIMIT).contains(&batch.tasks.len()) {
+        return Ok(StatusCode::BAD_REQUEST.into_response());
+    }
+    let Ok(operation) = Uuid::parse_str(&batch.operation) else {
+        return Ok(StatusCode::BAD_REQUEST.into_response());
+    };
+    let mut tx = app.db.begin_with("BEGIN IMMEDIATE").await?;
+    if !can_write(&mut tx, &user).await? {
+        return Ok(StatusCode::UNAUTHORIZED.into_response());
+    }
+    // Existing receipts suffice. The prefix distinguishes batches from legacy edits/creates.
+    let prefix = format!("batch:{operation}:");
+    let receipts: Vec<Receipt> = sqlx::query_as("SELECT task_id AS id, revision FROM task_mutations WHERE user_id = ? AND operation GLOB ? ORDER BY operation")
+        .bind(user.id).bind(format!("{prefix}*")).fetch_all(&mut *tx).await?;
+    if !receipts.is_empty() {
+        return Ok(if receipts.len() == batch.tasks.len() {
+            Json(json!({ "tasks": receipts })).into_response()
+        } else {
+            StatusCode::CONFLICT.into_response()
+        });
+    }
+
+    let mut errors = Vec::new();
+    let mut receipts = Vec::new();
+    let mut values = batch.shared;
+    for (index, task) in batch.tasks.iter().enumerate() {
+        for field in [
+            "work",
+            "work_new",
+            "intervention",
+            "intervention_new",
+            "status",
+            "status_new",
+            "notes",
+        ] {
+            values.insert(field.into(), value(task, field).into());
+        }
+        let operation = format!("{prefix}{index:04}");
+        match persist_task(&mut tx, user.id, None, None, Some(&operation), &values).await? {
+            Save::Saved { id, revision } => {
+                receipts.push(Receipt { id, revision });
+                errors.push(Values::new());
+            }
+            Save::Invalid(fields) => errors.push(fields),
+            _ => unreachable!("only inserts are accepted"),
+        }
+    }
+    if errors.iter().any(|fields| !fields.is_empty()) {
+        tx.rollback().await?;
+        return Ok((
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(json!({ "errors": errors })),
+        )
+            .into_response());
+    }
+    tx.commit().await?;
+    Ok(Json(json!({ "tasks": receipts })).into_response())
 }
 
 #[derive(Deserialize)]
@@ -614,7 +729,6 @@ struct Today {
 
 struct StoreCard {
     label: String,
-    count: usize,
 }
 
 #[derive(Deserialize)]
@@ -659,10 +773,7 @@ pub(crate) async fn home(
     };
     let stores: Vec<_> = labels
         .into_iter()
-        .map(|label| StoreCard {
-            count: counts.get(label.as_str()).copied().unwrap_or_default(),
-            label,
-        })
+        .map(|label| StoreCard { label })
         .collect();
     let selected = query
         .tienda

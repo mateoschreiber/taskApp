@@ -172,6 +172,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .route("/exportar/descargar", get(exports::download))
         .route("/api/offline", get(tasks::snapshot))
         .route("/api/tareas/sync", axum::routing::post(tasks::sync))
+        .route("/api/tareas/lote", axum::routing::post(tasks::create_batch))
         .route("/usuarios", get(users::list).post(users::create))
         .route("/usuarios/nuevo", get(users::new_page))
         .route("/cuenta", get(users::profile).post(users::update_profile))

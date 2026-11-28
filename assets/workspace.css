@@ -266,6 +266,13 @@
 .form-grid .wide { grid-column: 1 / -1; }
 .task-form .optional { color: var(--muted); font-size: .76rem; font-weight: 500; margin-inline-start: .4rem; }
 .task-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .65rem; padding: 1rem clamp(1rem, 3vw, 2rem); background: #fcfaf8; border-top: 1px solid var(--line); border-radius: 0 0 1.25rem 1.25rem; }
+.task-actions:not(:has(:is(button, a):not([hidden]))) { display: none; }
+.task-form[data-task-batch] { display: flow-root; }
+.task-form [data-task-block] legend { border-top: 1px solid var(--line); padding-top: 1rem; display: flex; align-items: center; gap: .4rem; }
+.task-form .task-remove { margin-inline-start: auto; min-height: 3rem; }
+.task-form .task-add, .task-form .task-feedback { margin: 0 clamp(1rem, 3vw, 2rem) 1rem; }
+.task-form :is(.task-add, .task-actions .primary) { min-height: 3rem; }
+[data-task-batch] :user-invalid { border-color: var(--wine); }
 .field .custom { border-radius: .6rem; padding: .7rem; background: #faf5f2; }
 .export-sheet, .export-dialog { width: min(100%, 32rem); padding: 0; }
 .export-dialog { margin: auto; border: 0; border-radius: 1.3rem; max-height: min(90vh, 48rem); max-height: min(90dvh, 48rem); color: var(--ink); box-shadow: 0 1.5rem 6rem #210a1966; }

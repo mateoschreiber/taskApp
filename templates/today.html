@@ -21,9 +21,9 @@
   <div class="field">
     <label for="today-store">Tienda</label>
     <select id="today-store" name="tienda">
-      <option value="">Todas las tiendas ({{ total }})</option>
+      <option value="">Todas las tiendas</option>
       {% for store in stores %}
-      <option value="{{ store.label }}" {% if selected == store.label %}selected{% endif %}>{{ store.label }} ({{ store.count }})</option>
+      <option value="{{ store.label }}" {% if selected == store.label %}selected{% endif %}>{{ store.label }}</option>
       {% endfor %}
     </select>
   </div>

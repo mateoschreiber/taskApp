@@ -36,12 +36,21 @@
   <a class="secondary" href="{{ action }}">Usar versión guardada</a>
 </aside>
 {% endif %}
-<form action="{{ action }}" method="post" class="paper-card task-form" aria-labelledby="{% if offline %}device-form-title{% else %}task-title{% endif %}" {% if offline %}hidden data-device-form{% endif %}>
+<form action="{{ action }}" method="post" class="paper-card task-form" aria-labelledby="{% if offline %}device-form-title{% else %}task-title{% endif %}" {% if offline %}hidden data-device-form{% endif %} {% if !editing %}data-task-batch="{{ batch_limit }}"{% endif %}>
   {% if offline %}<h2 id="device-form-title">Nueva tarea</h2>{% endif %}
   <input type="hidden" name="csrf" value="{{ csrf }}">
   <input type="hidden" name="revision" value="{{ revision }}">
+  {% if !editing %}
+    <fieldset class="task-group task-store">
+      <legend><span class="group-icon"><svg class="ico" aria-hidden="true"><use href="#i-store"></use></svg></span> Sucursal</legend>
+      <div class="form-grid">
+        {% for field in fields %}{% if field.key == "store" %}{% include "choice.html" %}{% endif %}{% endfor %}
+      </div>
+    </fieldset>
+  {% endif %}
+  <div data-task-content>
   <fieldset class="task-group">
-    <legend><span class="group-icon"><svg class="ico" aria-hidden="true"><use href="#i-store"></use></svg></span> Datos de tienda</legend>
+    <legend><span class="group-icon"><svg class="ico" aria-hidden="true"><use href="#i-store"></use></svg></span> {% if editing %}Datos de tienda{% else %}Datos generales{% endif %}</legend>
     <div class="form-grid">
       <div class="field">
         <label for="date">Fecha de actividad</label>
@@ -50,12 +59,13 @@
         {% if !date_error.is_empty() %}<p class="field-error" id="date-error">{{ date_error }}</p>{% endif %}
       </div>
       {% for field in fields %}
-        {% if field.key == "store" || field.key == "supervisor" || field.key == "zone" %}{% include "choice.html" %}{% endif %}
+        {% if (editing && field.key == "store") || field.key == "supervisor" || field.key == "zone" %}{% include "choice.html" %}{% endif %}
       {% endfor %}
     </div>
   </fieldset>
-  <fieldset class="task-group">
-    <legend><span class="group-icon"><svg class="ico" aria-hidden="true"><use href="#i-briefcase"></use></svg></span> Detalle del trabajo</legend>
+  <div data-task-blocks>
+  <fieldset class="task-group" data-task-block>
+    <legend><span class="group-icon"><svg class="ico" aria-hidden="true"><use href="#i-briefcase"></use></svg></span> <span data-task-title>Detalle del trabajo</span></legend>
     <div class="form-grid">
       {% for field in fields %}
         {% if field.key == "work" || field.key == "intervention" || field.key == "status" %}{% include "choice.html" %}{% endif %}
@@ -68,6 +78,10 @@
       </div>
     </div>
   </fieldset>
+  </div>
+  <button type="button" class="secondary task-add" data-task-add hidden><svg class="ico" aria-hidden="true"><use href="#i-plus"></use></svg> Agregar otra tarea</button>
+  <p class="notice error-notice task-feedback" tabindex="-1" data-task-feedback role="alert" hidden></p>
+  </div>
   <div class="task-actions">
     <button type="submit" class="primary"><svg class="ico" aria-hidden="true"><use href="#i-check"></use></svg> <span data-submit-label>{% if editing %}Guardar cambios{% else %}Guardar tarea{% endif %}</span></button>
     {% if editing %}<a href="/historial" class="quiet">Cancelar</a>{% else if offline %}<button class="quiet" id="device-cancel" type="button">Cancelar</button>{% endif %}
