@@ -12,7 +12,9 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     cargo build --release --locked && cp target/release/taskapp /taskapp
 
 FROM debian:bookworm-slim
-RUN mkdir /data && chown 65532:65532 /data
+RUN apt-get update && apt-get install -y --no-install-recommends fonts-liberation \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir /data && chown 65532:65532 /data
 COPY --from=build /taskapp /usr/local/bin/taskapp
 COPY --from=typst /bin/typst /usr/local/bin/typst
 USER 65532:65532
