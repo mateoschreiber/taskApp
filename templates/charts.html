@@ -9,14 +9,13 @@
 <section id="charts" data-from="{{ from }}" data-through="{{ through }}" data-offline="{{ csrf.is_empty() }}">
   <header class="chart-banner">
     <div><h1>Gráficos</h1><p>Actividad de las tiendas en el período seleccionado.</p></div>
-    <svg class="ico" aria-hidden="true"><use href="#i-chart"/></svg>
+    <a class="secondary" id="chart-pdf" hidden href="/exportar"><svg class="ico" aria-hidden="true"><use href="#i-download"/></svg> Descargar PDF</a>
   </header>
   <form class="paper-card filter-bar chart-controls" id="chart-range">
     <div class="field"><label for="chart-from">Desde</label><input id="chart-from" name="desde" type="date" value="{{ from }}" required></div>
     <div class="field"><label for="chart-through">Hasta</label><input id="chart-through" name="hasta" type="date" value="{{ through }}" required></div>
     {% let filter_id = "charts-user" %}{% include "account_filter.html" %}
     <button class="primary" type="submit">Aplicar</button>
-    <a class="secondary" id="chart-pdf" hidden href="/exportar"><svg class="ico" aria-hidden="true"><use href="#i-download"/></svg> Descargar PDF</a>
     <div class="chart-presets" aria-label="Períodos rápidos">
       <button class="quiet" type="button" data-days="7">Últimos 7 días</button>
       <button class="quiet" type="button" data-days="30">Últimos 30 días</button>
@@ -24,6 +23,7 @@
   </form>
   <p class="chart-message" id="chart-status" role="status"></p>
   <noscript><p>Activa JavaScript para explorar los gráficos.</p></noscript>
+  <div class="chart-summary" id="chart-summary" aria-label="Resumen del período"></div>
   <div class="chart-grid" id="chart-grid"></div>
   <dialog class="chart-detail paper-card" id="chart-detail" aria-labelledby="chart-detail-title">
     <header>

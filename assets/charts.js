@@ -6,6 +6,7 @@ const fromInput = form.elements.desde;
 const throughInput = form.elements.hasta;
 const status = document.querySelector('#chart-status');
 const grid = document.querySelector('#chart-grid');
+const summary = document.querySelector('#chart-summary');
 const account = Number(document.querySelector("[data-account-id]")?.dataset.accountId) || null;
 const owner = form.elements.usuario;
 const pdf = document.querySelector('#chart-pdf');
@@ -59,9 +60,22 @@ function offlineCharts(tasks, from, through) {
   const counts = new Map();
   for (const task of tasks) counts.set(task.activity_date, (counts.get(task.activity_date) ?? 0) + 1);
   const bars = [];
-  for (let time = Date.parse(from); tasks.length && time <= Date.parse(through); time += day) {
-    const date = iso(new Date(time));
-    bars.push({ label: short(date), count: counts.get(date) ?? 0, from: date, through: date });
+  const days = (Date.parse(through) - Date.parse(from)) / day + 1;
+  for (let time = Date.parse(from); tasks.length && time <= Date.parse(through);) {
+    const start = new Date(time);
+    const date = iso(start);
+    let next;
+    if (days <= 31) next = time + day;
+    else if (days <= 90) next = time + (7 - (start.getUTCDay() + 6) % 7) * day;
+    else if (days <= 730) next = Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1);
+    else next = Date.UTC(start.getUTCFullYear() + 1, 0, 1);
+    const end = iso(new Date(Math.min(next - day, Date.parse(through))));
+    const label = days <= 31 ? short(date) : days <= 90 ? `${short(date)}–${short(end)}`
+      : days <= 730 ? `${date.slice(5, 7)}/${date.slice(0, 4)}` : date.slice(0, 4);
+    let count = 0;
+    for (const [key, value] of counts) if (key >= date && key <= end) count += value;
+    bars.push({ label, count, from: date, through: end });
+    time = next;
   }
   return [{ key: 'date', title: 'Evolución de tareas', bars }, ...groupFields.map(([key, title]) => {
     const groups = new Map();
@@ -94,20 +108,56 @@ function details(chart, bar, tasks) {
 }
 
 function draw(charts, tasks) {
-  for (const chart of charts) {
+  const statuses = charts.find(chart => chart.key === 'status');
+  const metrics = [['Total de tareas', tasks.length], ['Tiendas con actividad', new Set(tasks.map(task => task.store)).size],
+    ...(statuses?.bars ?? []).map(bar => [bar.label, bar.count])];
+  for (const [label, value] of metrics) {
+    const item = element('div', undefined, 'chart-metric');
+    item.append(element('span', label), element('strong', value));
+    summary.append(item);
+  }
+  const order = ['date', 'status', 'store', 'work', 'intervention'];
+  for (const chart of [...charts].sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key))) {
     const card = element('section', undefined, 'paper-card chart-card');
     if (chart.key === 'date') card.classList.add('chart-timeline');
     card.append(element('h2', chart.title));
+    if (chart.key === 'status') {
+      card.classList.add('chart-status-card');
+      const colors = ['#c11130', '#941128', '#cf777f', '#8b8b8b', '#c8c8c8'];
+      let offset = 0;
+      const stops = chart.bars.map((bar, index) => {
+        const start = offset;
+        offset += bar.count / tasks.length * 100;
+        return `${colors[index % colors.length]} ${start}% ${offset}%`;
+      });
+      const donut = element('div', undefined, 'chart-donut');
+      donut.style.background = `conic-gradient(${stops.join(',')})`;
+      const center = element('div', undefined, 'chart-donut-center');
+      center.append(element('strong', tasks.length), element('span', 'Tareas'));
+      donut.append(center);
+      donut.setAttribute('aria-hidden', 'true');
+      card.append(donut);
+    }
     const max = chart.bars.reduce((max, bar) => Math.max(max, bar.count), 1);
     const series = element('ul', undefined, 'chart-series');
+    if (chart.key === 'date') series.classList.add('chart-columns');
     for (const bar of chart.bars) {
       const button = element('button', undefined, 'chart-bar');
       button.type = 'button';
+      button.title = `${bar.label}: ${bar.count} tareas`;
       const meter = element('meter');
       meter.max = max;
       meter.value = bar.count;
       meter.setAttribute('aria-hidden', 'true');
-      button.append(element('span', bar.label), element('strong', bar.count), meter);
+      const amount = chart.key === 'status' ? `${bar.count} · ${(bar.count / tasks.length * 100).toLocaleString('es-PY', { maximumFractionDigits: 1 })}%` : bar.count;
+      if (chart.key === 'date') {
+        const column = element('span', undefined, 'chart-column');
+        column.style.height = `${bar.count / max * 100}%`;
+        button.setAttribute('aria-label', `${bar.label}: ${bar.count} tareas`);
+        button.append(column, element('span', bar.label, 'chart-column-label'));
+      } else {
+        button.append(element('span', bar.label), element('strong', amount), meter);
+      }
       button.addEventListener('click', () => details(chart, bar, tasks));
       const item = element('li');
       item.append(button);
@@ -122,6 +172,7 @@ function clear() {
   if (dialog.open) dialog.close();
   detailRows.replaceChildren();
   grid.replaceChildren();
+  summary.replaceChildren();
   pdf.hidden = true;
 }
 
